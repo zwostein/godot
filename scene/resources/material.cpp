@@ -396,6 +396,9 @@ void SpatialMaterial::_update_shader() {
 	if (flags[FLAG_ENSURE_CORRECT_NORMALS]) {
 		code += ",ensure_correct_normals";
 	}
+	if (flags[FLAG_NO_FORWARD_LIGHTING]) {
+		code += ",no_forward_lighting";
+	}
 	code += ";\n";
 
 	code += "uniform vec4 albedo : hint_color;\n";
@@ -1855,6 +1858,7 @@ void SpatialMaterial::_bind_methods() {
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_fixed_size"), "set_flag", "get_flag", FLAG_FIXED_SIZE);
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_albedo_tex_force_srgb"), "set_flag", "get_flag", FLAG_ALBEDO_TEXTURE_FORCE_SRGB);
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_do_not_receive_shadows"), "set_flag", "get_flag", FLAG_DONT_RECEIVE_SHADOWS);
+	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_no_forward_lighting"), "set_flag", "get_flag", FLAG_NO_FORWARD_LIGHTING);
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_ensure_correct_normals"), "set_flag", "get_flag", FLAG_ENSURE_CORRECT_NORMALS);
 	ADD_GROUP("Vertex Color", "vertex_color");
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "vertex_color_use_as_albedo"), "set_flag", "get_flag", FLAG_ALBEDO_FROM_VERTEX_COLOR);

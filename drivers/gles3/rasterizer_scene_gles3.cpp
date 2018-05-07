@@ -2036,7 +2036,8 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
 
 					state.scene_shader.set_conditional(SceneShaderGLES3::SHADELESS, false);
 
-					state.scene_shader.set_conditional(SceneShaderGLES3::USE_FORWARD_LIGHTING, !p_directional_add);
+					state.scene_shader.set_conditional(SceneShaderGLES3::USE_FORWARD_LIGHTING, !p_directional_add && !(e->sort_key & SORT_KEY_NO_FORWARD_LIGHTING_FLAG ));
+
 					state.scene_shader.set_conditional(SceneShaderGLES3::USE_VERTEX_LIGHTING, (e->sort_key & SORT_KEY_VERTEX_LIT_FLAG));
 
 					state.scene_shader.set_conditional(SceneShaderGLES3::USE_LIGHT_DIRECTIONAL, false);
@@ -2371,6 +2372,10 @@ void RasterizerSceneGLES3::_add_geometry_with_material(RasterizerStorageGLES3::G
 	if (!p_depth_pass && (p_material->shader->spatial.uses_vertex_lighting || storage->config.force_vertex_shading)) {
 
 		e->sort_key |= SORT_KEY_VERTEX_LIT_FLAG;
+	}
+
+	if (p_material->shader->spatial.no_forward_lighting ) {
+		e->sort_key |= SORT_KEY_NO_FORWARD_LIGHTING_FLAG;
 	}
 
 	if (p_material->shader->spatial.uses_time) {

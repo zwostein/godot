@@ -1702,6 +1702,7 @@ void RasterizerStorageGLES3::_update_shader(Shader *p_shader) const {
 			p_shader->spatial.uses_vertex = false;
 			p_shader->spatial.writes_modelview_or_projection = false;
 			p_shader->spatial.uses_world_coordinates = false;
+			p_shader->spatial.no_forward_lighting = false;
 
 			shaders.actions_scene.render_mode_values["blend_add"] = Pair<int *, int>(&p_shader->spatial.blend_mode, Shader::Spatial::BLEND_MODE_ADD);
 			shaders.actions_scene.render_mode_values["blend_mix"] = Pair<int *, int>(&p_shader->spatial.blend_mode, Shader::Spatial::BLEND_MODE_MIX);
@@ -1723,6 +1724,8 @@ void RasterizerStorageGLES3::_update_shader(Shader *p_shader) const {
 			shaders.actions_scene.render_mode_flags["vertex_lighting"] = &p_shader->spatial.uses_vertex_lighting;
 
 			shaders.actions_scene.render_mode_flags["world_vertex_coords"] = &p_shader->spatial.uses_world_coordinates;
+
+			shaders.actions_scene.render_mode_flags["no_forward_lighting"] = &p_shader->spatial.no_forward_lighting;
 
 			shaders.actions_scene.usage_flag_pointers["ALPHA"] = &p_shader->spatial.uses_alpha;
 			shaders.actions_scene.usage_flag_pointers["ALPHA_SCISSOR"] = &p_shader->spatial.uses_alpha_scissor;

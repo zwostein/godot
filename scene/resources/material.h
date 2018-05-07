@@ -189,6 +189,7 @@ public:
 		FLAG_USE_ALPHA_SCISSOR,
 		FLAG_ALBEDO_TEXTURE_FORCE_SRGB,
 		FLAG_DONT_RECEIVE_SHADOWS,
+		FLAG_NO_FORWARD_LIGHTING,
 		FLAG_ENSURE_CORRECT_NORMALS,
 		FLAG_MAX
 	};
@@ -233,12 +234,12 @@ private:
 	union MaterialKey {
 
 		struct {
-			uint64_t feature_mask : 12;
+			uint64_t feature_mask : FEATURE_MAX;
 			uint64_t detail_uv : 1;
 			uint64_t blend_mode : 2;
 			uint64_t depth_draw_mode : 2;
 			uint64_t cull_mode : 2;
-			uint64_t flags : 16;
+			uint64_t flags : FLAG_MAX;
 			uint64_t detail_blend_mode : 2;
 			uint64_t diffuse_mode : 3;
 			uint64_t specular_mode : 2;
