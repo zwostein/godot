@@ -3175,6 +3175,74 @@ BakedIndirectLightGizmo::BakedIndirectLightGizmo(BakedLightmap *p_baker) {
 }
 
 ////////
+
+Vector<Vector3> AtmosphereGizmo::sphereLines(float radius) {
+	Vector<Vector3> lines;
+	static const int circle_divs = 64;
+	static const float angle_incs = (2.0 * M_PI) / circle_divs;
+	float angle = 0.0f;
+	for (int i = 0; i < circle_divs; i++) {
+		lines.push_back(Vector3(sinf(angle) * radius, cosf(angle) * radius, 0.0f));
+		angle += angle_incs;
+		lines.push_back(Vector3(sinf(angle) * radius, cosf(angle) * radius, 0.0f));
+	}
+	angle = 0.0f;
+	for (int i = 0; i < circle_divs; i++) {
+		lines.push_back(Vector3(sinf(angle) * radius, 0.0f, cosf(angle) * radius));
+		angle += angle_incs;
+		lines.push_back(Vector3(sinf(angle) * radius, 0.0f, cosf(angle) * radius));
+	}
+	angle = 0.0f;
+	for (int i = 0; i < circle_divs; i++) {
+		lines.push_back(Vector3(0.0f, sinf(angle) * radius, cosf(angle) * radius));
+		angle += angle_incs;
+		lines.push_back(Vector3(0.0f, sinf(angle) * radius, cosf(angle) * radius));
+	}
+	return lines;
+}
+
+void AtmosphereGizmo::redraw() {
+	clear();
+	Color inner_color = EDITOR_GET("editors/3d_gizmos/gizmo_colors/atmosphere_inner");
+	Color surface_color = EDITOR_GET("editors/3d_gizmos/gizmo_colors/atmosphere_surface");
+	Color outer_color = EDITOR_GET("editors/3d_gizmos/gizmo_colors/atmosphere_outer");
+	Ref<Material> inner_material = create_material("atmosphere_inner_material", inner_color);
+	Ref<Material> surface_material = create_material("atmosphere_surface_material", surface_color);
+	Ref<Material> outer_material = create_material("atmosphere_outer_material", outer_color);
+
+	Vector<Vector3> outer_lines = sphereLines(atmosphere->get_outer_radius());
+	add_lines(outer_lines, outer_material);
+	add_collision_segments(outer_lines);
+
+	Vector<Vector3> surface_lines = sphereLines(atmosphere->get_surface_radius());
+	add_lines(surface_lines, surface_material);
+	add_collision_segments(surface_lines);
+
+	Vector<Vector3> inner_lines = sphereLines(atmosphere->get_inner_radius());
+	add_lines(inner_lines, inner_material);
+	add_collision_segments(inner_lines);
+
+	Vector<Vector3> lines;
+	lines.push_back(Vector3(-atmosphere->get_outer_radius(), 0.0f, 0.0f));
+	lines.push_back(Vector3(atmosphere->get_outer_radius(), 0.0f, 0.0f));
+	lines.push_back(Vector3(0.0f, -atmosphere->get_outer_radius(), 0.0f));
+	lines.push_back(Vector3(0.0f, atmosphere->get_outer_radius(), 0.0f));
+	lines.push_back(Vector3(0.0f, 0.0f, -atmosphere->get_outer_radius()));
+	lines.push_back(Vector3(0.0f, 0.0f, atmosphere->get_outer_radius()));
+	add_lines(lines, inner_material);
+	add_collision_segments(lines);
+
+	Ref<Material> icon = create_icon_material("atmosphere_icon", SpatialEditor::get_singleton()->get_icon("GizmoAtmosphere", "EditorIcons"));
+	add_unscaled_billboard(icon, 0.05);
+}
+
+AtmosphereGizmo::AtmosphereGizmo(Atmosphere *p_atmosphere) {
+
+	set_spatial_node(p_atmosphere);
+	atmosphere = p_atmosphere;
+}
+
+////////
 void NavigationMeshSpatialGizmo::redraw() {
 
 	Ref<Material> edge_material = create_material("navigation_material", EDITOR_GET("editors/3d_gizmos/gizmo_colors/navigation_edge"));
@@ -3272,10 +3340,10 @@ NavigationMeshSpatialGizmo::NavigationMeshSpatialGizmo(NavigationMeshInstance *p
 	navmesh = p_navmesh;
 }
 
-	//////
-	///
-	///
-	///
+//////
+///
+///
+///
 
 #define BODY_A_RADIUS 0.25
 #define BODY_B_RADIUS 0.27
@@ -4162,6 +4230,12 @@ Ref<SpatialEditorGizmo> SpatialEditorGizmos::get_gizmo(Spatial *p_spatial) {
 		return misg;
 	}
 
+	if (Object::cast_to<Atmosphere>(p_spatial)) {
+
+		Ref<AtmosphereGizmo> misg = memnew(AtmosphereGizmo(Object::cast_to<Atmosphere>(p_spatial)));
+		return misg;
+	}
+
 	return Ref<SpatialEditorGizmo>();
 }
 
@@ -4192,6 +4266,9 @@ SpatialEditorGizmos::SpatialEditorGizmos() {
 	handle2_material_billboard->set_billboard_mode(SpatialMaterial::BILLBOARD_ENABLED);
 	handle2_material_billboard->set_on_top_of_alpha();
 
+	EDITOR_DEF("editors/3d_gizmos/gizmo_colors/atmosphere_inner", Color(1.0, 0.5, 0.0));
+	EDITOR_DEF("editors/3d_gizmos/gizmo_colors/atmosphere_surface", Color(0.75, 0.75, 0.0));
+	EDITOR_DEF("editors/3d_gizmos/gizmo_colors/atmosphere_outer", Color(0.0, 0.5, 1.0));
 	EDITOR_DEF("editors/3d_gizmos/gizmo_colors/light", Color(1, 1, 0.2));
 	EDITOR_DEF("editors/3d_gizmos/gizmo_colors/stream_player_3d", Color(0.4, 0.8, 1));
 	EDITOR_DEF("editors/3d_gizmos/gizmo_colors/camera", Color(0.8, 0.4, 0.8));

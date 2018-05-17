@@ -146,6 +146,7 @@ void VisualServerWrapMT::finish() {
 	directional_light_free_cached_ids();
 	omni_light_free_cached_ids();
 	spot_light_free_cached_ids();
+	atmosphere_free_cached_ids();
 	reflection_probe_free_cached_ids();
 	gi_probe_free_cached_ids();
 	particles_free_cached_ids();

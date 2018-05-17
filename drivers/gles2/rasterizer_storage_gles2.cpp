@@ -1407,6 +1407,69 @@ AABB RasterizerStorageGLES2::light_get_aabb(RID p_light) const {
 	return AABB();
 }
 
+/* ATMOSPHERE API */
+
+RID RasterizerStorageGLES2::atmosphere_create() {
+	return RID();
+}
+
+void RasterizerStorageGLES2::atmosphere_set_num_out_scatter(RID p_atmosphere, unsigned int p_num_out_scatter) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_num_in_scatter(RID p_atmosphere, unsigned int p_num_in_scatter) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_outer_radius(RID p_atmosphere, float p_outer_radius) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_surface_radius(RID p_atmosphere, float p_surface_radius) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_surface_margin(RID p_atmosphere, float p_surface_margin) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_inner_radius(RID p_atmosphere, float p_inner_radius) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_ph_ray(RID p_atmosphere, float p_ph_ray) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_ph_mie(RID p_atmosphere, float p_ph_mie) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_k_ray(RID p_atmosphere, const Vector3 & p_k_ray) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_k_mie(RID p_atmosphere, const Vector3 & p_k_mie) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_k_mie_ex(RID p_atmosphere, float p_k_mie_ex) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_g_mie(RID p_atmosphere, float p_g_mie) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_intensity(RID p_atmosphere, float p_intensity) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_direct_irradiance_attenuation(RID p_atmosphere, float p_attenuation) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_indirect_irradiance_intensity(RID p_atmosphere, float p_intensity) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_enable_shadows(RID p_atmosphere, bool enable) {
+}
+
+void RasterizerStorageGLES2::atmosphere_set_shadow_bias(RID p_atmosphere, float p_bias) {
+}
+
+
+AABB RasterizerStorageGLES2::atmosphere_get_aabb(RID p_atmosphere) const {
+	return AABB();
+}
+
+
 /* PROBE API */
 
 RID RasterizerStorageGLES2::reflection_probe_create() {

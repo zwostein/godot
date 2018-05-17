@@ -439,6 +439,28 @@ public:
 
 	virtual void light_directional_set_shadow_depth_range_mode(RID p_light, LightDirectionalShadowDepthRangeMode p_range_mode) = 0;
 
+	/* ATMOSPHERE API */
+
+	virtual RID atmosphere_create() = 0;
+
+	virtual void atmosphere_set_num_out_scatter(RID p_atmosphere, unsigned int p_num_out_scatter) = 0;
+	virtual void atmosphere_set_num_in_scatter(RID p_atmosphere, unsigned int p_num_in_scatter) = 0;
+	virtual void atmosphere_set_inner_radius(RID p_atmosphere, float p_inner_radius) = 0;
+	virtual void atmosphere_set_surface_radius(RID p_atmosphere, float p_surface_radius) = 0;
+	virtual void atmosphere_set_surface_margin(RID p_atmosphere, float p_surface_margin) = 0;
+	virtual void atmosphere_set_outer_radius(RID p_atmosphere, float p_outer_radius) = 0;
+	virtual void atmosphere_set_ph_ray(RID p_atmosphere, float p_ph_ray) = 0;
+	virtual void atmosphere_set_ph_mie(RID p_atmosphere, float p_ph_mie) = 0;
+	virtual void atmosphere_set_k_ray(RID p_atmosphere, const Vector3 & p_k_ray) = 0;
+	virtual void atmosphere_set_k_mie(RID p_atmosphere, const Vector3 & p_k_mie) = 0;
+	virtual void atmosphere_set_k_mie_ex(RID p_atmosphere, float p_k_mie_ex) = 0;
+	virtual void atmosphere_set_g_mie(RID p_atmosphere, float p_g_mie) = 0;
+	virtual void atmosphere_set_intensity(RID p_atmosphere, float p_intensity) = 0;
+	virtual void atmosphere_set_direct_irradiance_attenuation(RID p_atmosphere, float p_attenuation) = 0;
+	virtual void atmosphere_set_indirect_irradiance_intensity(RID p_atmosphere, float p_intensity) = 0;
+	virtual void atmosphere_set_enable_shadows(RID p_atmosphere, bool p_enable) = 0;
+	virtual void atmosphere_set_shadow_bias(RID p_atmosphere, float p_shadow_bias) = 0;
+
 	/* PROBE API */
 
 	virtual RID reflection_probe_create() = 0;
@@ -765,6 +787,7 @@ public:
 		INSTANCE_REFLECTION_PROBE,
 		INSTANCE_GI_PROBE,
 		INSTANCE_LIGHTMAP_CAPTURE,
+		INSTANCE_ATMOSPHERE,
 		INSTANCE_MAX,
 
 		INSTANCE_GEOMETRY_MASK = (1 << INSTANCE_MESH) | (1 << INSTANCE_MULTIMESH) | (1 << INSTANCE_IMMEDIATE) | (1 << INSTANCE_PARTICLES)

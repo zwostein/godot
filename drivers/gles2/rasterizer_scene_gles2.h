@@ -185,6 +185,11 @@ public:
 
 	/* REFLECTION CUBEMAPS */
 
+	/* ATMOSPHERE INSTANCE */
+
+	virtual RID atmosphere_instance_create(RID p_probe);
+	virtual void atmosphere_instance_set_transform(RID p_instance, const Transform &p_transform);
+
 	/* REFLECTION PROBE INSTANCE */
 
 	virtual RID reflection_probe_instance_create(RID p_probe);
@@ -242,7 +247,7 @@ public:
 
 	/* RENDER LIST */
 
-	virtual void render_scene(const Transform &p_cam_transform, const CameraMatrix &p_cam_projection, bool p_cam_ortogonal, InstanceBase **p_cull_result, int p_cull_count, RID *p_light_cull_result, int p_light_cull_count, RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, RID p_environment, RID p_shadow_atlas, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass);
+	virtual void render_scene(const Transform &p_cam_transform, const CameraMatrix &p_cam_projection, bool p_cam_orthogonal, InstanceBase **p_cull_result, int p_cull_count, RID *p_light_cull_result, int p_light_cull_count, RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, RID *p_atmosphere_cull_result, int p_atmosphere_cull_count, RID p_environment, RID p_shadow_atlas, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass);
 	virtual void render_shadow(RID p_light, RID p_shadow_atlas, int p_pass, InstanceBase **p_cull_result, int p_cull_count);
 	virtual bool free(RID p_rid);
 

@@ -848,6 +848,7 @@ ShaderCompilerGLES3::ShaderCompilerGLES3() {
 	actions[VS::SHADER_SPATIAL].renames["ANISOTROPY_FLOW"] = "anisotropy_flow";
 	//actions[VS::SHADER_SPATIAL].renames["SSS_SPREAD"] = "sss_spread";
 	actions[VS::SHADER_SPATIAL].renames["SSS_STRENGTH"] = "sss_strength";
+	actions[VS::SHADER_SPATIAL].renames["ATMOSPHERE_BACKGROUND"] = "atmosphere_background";
 	actions[VS::SHADER_SPATIAL].renames["TRANSMISSION"] = "transmission";
 	actions[VS::SHADER_SPATIAL].renames["AO"] = "ao";
 	actions[VS::SHADER_SPATIAL].renames["AO_LIGHT_AFFECT"] = "ao_light_affect";

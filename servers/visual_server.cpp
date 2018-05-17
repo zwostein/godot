@@ -1646,6 +1646,25 @@ void VisualServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("light_directional_set_blend_splits", "light", "enable"), &VisualServer::light_directional_set_blend_splits);
 	ClassDB::bind_method(D_METHOD("light_directional_set_shadow_depth_range_mode", "light", "range_mode"), &VisualServer::light_directional_set_shadow_depth_range_mode);
 
+	ClassDB::bind_method(D_METHOD("atmosphere_create"), &VisualServer::atmosphere_create);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_num_in_scatter", "atmosphere", "number"), &VisualServer::atmosphere_set_num_in_scatter);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_num_out_scatter", "atmosphere", "number"), &VisualServer::atmosphere_set_num_out_scatter);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_inner_radius", "atmosphere", "radius"), &VisualServer::atmosphere_set_inner_radius);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_surface_radius", "atmosphere", "radius"), &VisualServer::atmosphere_set_surface_radius);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_surface_margin", "atmosphere", "margin"), &VisualServer::atmosphere_set_surface_margin);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_outer_radius", "atmosphere", "radius"), &VisualServer::atmosphere_set_outer_radius);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_ph_ray", "atmosphere", "value"), &VisualServer::atmosphere_set_ph_ray);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_ph_mie", "atmosphere", "value"), &VisualServer::atmosphere_set_ph_mie);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_k_ray", "atmosphere", "value"), &VisualServer::atmosphere_set_k_ray);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_k_mie", "atmosphere", "value"), &VisualServer::atmosphere_set_k_mie);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_k_mie_ex", "atmosphere", "value"), &VisualServer::atmosphere_set_k_mie_ex);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_g_mie", "atmosphere", "value"), &VisualServer::atmosphere_set_g_mie);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_intensity", "atmosphere", "intensity"), &VisualServer::atmosphere_set_intensity);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_direct_irradiance_attenuation", "atmosphere", "attenuation"), &VisualServer::atmosphere_set_direct_irradiance_attenuation);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_indirect_irradiance_intensity", "atmosphere", "intensity"), &VisualServer::atmosphere_set_indirect_irradiance_intensity);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_enable_shadows", "atmosphere", "enable"), &VisualServer::atmosphere_set_enable_shadows);
+	ClassDB::bind_method(D_METHOD("atmosphere_set_shadow_bias", "atmosphere", "bias"), &VisualServer::atmosphere_set_shadow_bias);
+
 	ClassDB::bind_method(D_METHOD("reflection_probe_create"), &VisualServer::reflection_probe_create);
 	ClassDB::bind_method(D_METHOD("reflection_probe_set_update_mode", "probe", "mode"), &VisualServer::reflection_probe_set_update_mode);
 	ClassDB::bind_method(D_METHOD("reflection_probe_set_intensity", "probe", "intensity"), &VisualServer::reflection_probe_set_intensity);
@@ -2245,6 +2264,17 @@ VisualServer::VisualServer() {
 
 	GLOBAL_DEF("rendering/quality/depth_prepass/enable", true);
 	GLOBAL_DEF("rendering/quality/depth_prepass/disable_for_vendors", "PowerVR,Mali,Adreno");
+
+	GLOBAL_DEF("rendering/quality/atmosphere/ray_mie_height_resolution", 64);
+	GLOBAL_DEF("rendering/quality/atmosphere/ray_mie_angle_resolution", 64);
+	ProjectSettings::get_singleton()->set_custom_property_info("rendering/quality/atmosphere/ray_mie_height_resolution", PropertyInfo(Variant::INT, "rendering/quality/atmosphere/ray_mie_height_resolution", PROPERTY_HINT_RANGE, "16,256"));
+	ProjectSettings::get_singleton()->set_custom_property_info("rendering/quality/atmosphere/ray_mie_angle_resolution", PropertyInfo(Variant::INT, "rendering/quality/atmosphere/ray_mie_angle_resolution", PROPERTY_HINT_RANGE, "16,256"));
+	GLOBAL_DEF("rendering/quality/atmosphere/irradiance_height_resolution", 64);
+	GLOBAL_DEF("rendering/quality/atmosphere/irradiance_angle_resolution", 64);
+	GLOBAL_DEF("rendering/quality/atmosphere/irradiance_samples", 64);
+	ProjectSettings::get_singleton()->set_custom_property_info("rendering/quality/atmosphere/irradiance_height_resolution", PropertyInfo(Variant::INT, "rendering/quality/atmosphere/irradiance_height_resolution", PROPERTY_HINT_RANGE, "16,256"));
+	ProjectSettings::get_singleton()->set_custom_property_info("rendering/quality/atmosphere/irradiance_angle_resolution", PropertyInfo(Variant::INT, "rendering/quality/atmosphere/irradiance_angle_resolution", PROPERTY_HINT_RANGE, "16,256"));
+	ProjectSettings::get_singleton()->set_custom_property_info("rendering/quality/atmosphere/irradiance_samples", PropertyInfo(Variant::INT, "rendering/quality/atmosphere/irradiance_samples", PROPERTY_HINT_RANGE, "4,256"));
 }
 
 VisualServer::~VisualServer() {

@@ -50,6 +50,7 @@ public:
 		MAX_REFLECTION_PROBES_CULLED = 4096,
 		MAX_ROOM_CULL = 32,
 		MAX_EXTERIOR_PORTALS = 128,
+		MAX_ATMOSPHERES_CULLED = 4096,
 	};
 
 	uint64_t render_pass;
@@ -256,12 +257,30 @@ public:
 
 		List<Instance *> lightmap_captures;
 
+		List<Instance *> atmospheres;
+
 		InstanceGeometryData() {
 
 			lighting_dirty = false;
 			reflection_dirty = true;
 			can_cast_shadows = true;
 			gi_probes_dirty = true;
+		}
+	};
+
+	struct InstanceAtmosphereData : public InstanceBaseData {
+
+		Instance *owner;
+
+		struct PairInfo {
+			List<Instance *>::Element *L; //atmosphere iterator in geometry
+			Instance *geometry;
+		};
+		List<PairInfo> geometries;
+
+		RID instance;
+
+		InstanceAtmosphereData() {
 		}
 	};
 
@@ -443,6 +462,8 @@ public:
 	int directional_light_count;
 	RID reflection_probe_instance_cull_result[MAX_REFLECTION_PROBES_CULLED];
 	int reflection_probe_cull_count;
+	RID atmosphere_instance_cull_result[MAX_ATMOSPHERES_CULLED];
+	int atmosphere_cull_count;
 
 	RID_Owner<Instance> instance_owner;
 

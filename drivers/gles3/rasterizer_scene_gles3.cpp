@@ -465,6 +465,28 @@ int RasterizerSceneGLES3::get_directional_light_shadow_size(RID p_light_intance)
 }
 //////////////////////////////////////////////////////
 
+RID RasterizerSceneGLES3::atmosphere_instance_create(RID p_atmosphere) {
+
+	RasterizerStorageGLES3::Atmosphere *atmosphere = storage->atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND_V(!atmosphere, RID());
+
+	AtmosphereInstance *ai = memnew(AtmosphereInstance);
+
+	ai->atmosphere_ptr = atmosphere;
+	ai->self = atmosphere_instance_owner.make_rid(ai);
+	ai->atmosphere = p_atmosphere;
+
+	return ai->self;
+}
+
+void RasterizerSceneGLES3::atmosphere_instance_set_transform(RID p_instance, const Transform &p_transform) {
+
+	AtmosphereInstance *ai = atmosphere_instance_owner.getornull(p_instance);
+	ERR_FAIL_COND(!ai);
+	ai->transform = p_transform;
+}
+//////////////////////////////////////////////////////
+
 RID RasterizerSceneGLES3::reflection_atlas_create() {
 
 	ReflectionAtlas *reflection_atlas = memnew(ReflectionAtlas);
@@ -2011,6 +2033,7 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
 				if (e->sort_key & SORT_KEY_UNSHADED_FLAG) {
 
 					state.scene_shader.set_conditional(SceneShaderGLES3::SHADELESS, true);
+					state.scene_shader.set_conditional(SceneShaderGLES3::USE_ATMOSPHERE, false);
 					state.scene_shader.set_conditional(SceneShaderGLES3::USE_FORWARD_LIGHTING, false);
 					state.scene_shader.set_conditional(SceneShaderGLES3::USE_VERTEX_LIGHTING, false);
 					state.scene_shader.set_conditional(SceneShaderGLES3::USE_LIGHT_DIRECTIONAL, false);
@@ -2036,6 +2059,7 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
 
 					state.scene_shader.set_conditional(SceneShaderGLES3::SHADELESS, false);
 
+					state.scene_shader.set_conditional(SceneShaderGLES3::USE_ATMOSPHERE, (e->sort_key & SORT_KEY_ATMOSPHERE_FLAG) );
 					state.scene_shader.set_conditional(SceneShaderGLES3::USE_FORWARD_LIGHTING, !p_directional_add && !(e->sort_key & SORT_KEY_NO_FORWARD_LIGHTING_FLAG ));
 
 					state.scene_shader.set_conditional(SceneShaderGLES3::USE_VERTEX_LIGHTING, (e->sort_key & SORT_KEY_VERTEX_LIT_FLAG));
@@ -2165,6 +2189,10 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
 			_setup_light(e, p_view_transform);
 		}
 
+		if (e->sort_key & SORT_KEY_ATMOSPHERE_FLAG) {
+			_setup_atmosphere(e);
+		}
+
 		if (e->owner != prev_owner || prev_base_type != e->instance->base_type || prev_geometry != e->geometry) {
 
 			_setup_geometry(e, p_view_transform);
@@ -2191,6 +2219,7 @@ void RasterizerSceneGLES3::_render_list(RenderList::Element **p_elements, int p_
 
 	glBindVertexArray(0);
 
+	state.scene_shader.set_conditional(SceneShaderGLES3::USE_ATMOSPHERE, false);
 	state.scene_shader.set_conditional(SceneShaderGLES3::USE_INSTANCING, false);
 	state.scene_shader.set_conditional(SceneShaderGLES3::USE_SKELETON, false);
 	state.scene_shader.set_conditional(SceneShaderGLES3::USE_RADIANCE_MAP, false);
@@ -2327,6 +2356,10 @@ void RasterizerSceneGLES3::_add_geometry_with_material(RasterizerStorageGLES3::G
 		}
 
 		e->sort_key |= uint64_t(e->material->index) << RenderList::SORT_KEY_MATERIAL_INDEX_SHIFT;
+
+		if (!e->instance->atmosphere_instances.empty() && p_material->shader->spatial.uses_atmosphere) {
+			e->sort_key |= SORT_KEY_ATMOSPHERE_FLAG;
+		}
 
 		if (e->instance->gi_probe_instances.size()) {
 			e->sort_key |= SORT_KEY_GI_PROBES_FLAG;
@@ -3036,6 +3069,76 @@ void RasterizerSceneGLES3::_setup_reflections(RID *p_reflection_probe_cull_resul
 	}
 
 	glBindBufferBase(GL_UNIFORM_BUFFER, 6, state.reflection_array_ubo);
+}
+
+void RasterizerSceneGLES3::_setup_atmosphere(RenderList::Element *e) {
+
+	if(state.atmosphere_count <= 0)
+		return;
+
+	AtmosphereInstance * atmo = atmospheres[0];
+	if (state.atmosphere_count > 1) {
+		real_t atmo_distance = e->instance->transform.get_origin().distance_squared_to( atmo->transform.get_origin() );
+		for (unsigned int i = 1; i < state.atmosphere_count; i++) {
+			real_t new_distance = e->instance->transform.get_origin().distance_squared_to( atmospheres[i]->transform.get_origin() );
+			if (new_distance < atmo_distance) {
+				atmo_distance = new_distance;
+				atmo = atmospheres[i];
+			}
+		}
+	}
+
+	AtmosphereDataUBO ubo;
+	store_transform(atmo->transform, ubo.transform);
+	ubo.num_in_scatter = atmo->atmosphere_ptr->num_in_scatter;
+	ubo.num_out_scatter = atmo->atmosphere_ptr->num_out_scatter;
+	ubo.outer_radius = atmo->atmosphere_ptr->outer_radius;
+	ubo.inner_radius = atmo->atmosphere_ptr->inner_radius;
+	ubo.surface_radius = atmo->atmosphere_ptr->surface_radius;
+	ubo.surface_margin = atmo->atmosphere_ptr->surface_margin;
+	ubo.ph_ray = atmo->atmosphere_ptr->ph_ray;
+	ubo.ph_mie = atmo->atmosphere_ptr->ph_mie;
+	ubo.k_ray[0] = atmo->atmosphere_ptr->k_ray.x;
+	ubo.k_ray[1] = atmo->atmosphere_ptr->k_ray.y;
+	ubo.k_ray[2] = atmo->atmosphere_ptr->k_ray.z;
+	ubo.k_ray[3] = 0.0f;
+	ubo.k_mie[0] = atmo->atmosphere_ptr->k_mie.x;
+	ubo.k_mie[1] = atmo->atmosphere_ptr->k_mie.y;
+	ubo.k_mie[2] = atmo->atmosphere_ptr->k_mie.z;
+	ubo.k_mie[3] = 0.0f;
+	ubo.k_mie_ex = atmo->atmosphere_ptr->k_mie_ex;
+	ubo.g_mie = atmo->atmosphere_ptr->g_mie;
+	ubo.intensity = atmo->atmosphere_ptr->intensity;
+	ubo.direct_irradiance_attenuation = atmo->atmosphere_ptr->direct_irradiance_attenuation;
+	ubo.indirect_irradiance_intensity = atmo->atmosphere_ptr->indirect_irradiance_intensity;
+	ubo.enable_shadows = atmo->atmosphere_ptr->enable_shadows;
+	ubo.shadow_bias = atmo->atmosphere_ptr->shadow_bias;
+
+	glBindBuffer(GL_UNIFORM_BUFFER, state.atmosphere_ubo);
+	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(AtmosphereDataUBO), &ubo);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	glBindBufferBase(GL_UNIFORM_BUFFER, 7, state.atmosphere_ubo);
+
+	glActiveTexture(GL_TEXTURE0 + storage->config.max_texture_image_units - 6);
+	glBindTexture(GL_TEXTURE_2D, atmo->atmosphere_ptr->tex_ray_mie_id );
+	glActiveTexture(GL_TEXTURE0 + storage->config.max_texture_image_units - 11);
+	glBindTexture(GL_TEXTURE_2D, atmo->atmosphere_ptr->tex_irradiance_id );
+
+	atmosphere = atmo;
+}
+
+void RasterizerSceneGLES3::_setup_atmospheres(RID *p_atmosphere_cull_result, int p_atmosphere_cull_count) {
+
+	state.atmosphere_count = 0;
+	atmosphere = NULL;
+
+	for (int i = 0; i < p_atmosphere_cull_count; i++) {
+		ERR_BREAK(i >= RenderList::MAX_ATMOSPHERES);
+
+		AtmosphereInstance *ai = atmosphere_instance_owner.getptr(p_atmosphere_cull_result[i]);
+		ERR_FAIL_COND(!ai);
+		atmospheres[state.atmosphere_count++] = ai;
+	}
 }
 
 void RasterizerSceneGLES3::_copy_screen(bool p_invalidate_color, bool p_invalidate_depth) {
@@ -4042,7 +4145,7 @@ void RasterizerSceneGLES3::_post_process(Environment *env, const CameraMatrix &p
 	state.tonemap_shader.set_conditional(TonemapShaderGLES3::V_FLIP, false);
 }
 
-void RasterizerSceneGLES3::render_scene(const Transform &p_cam_transform, const CameraMatrix &p_cam_projection, bool p_cam_ortogonal, InstanceBase **p_cull_result, int p_cull_count, RID *p_light_cull_result, int p_light_cull_count, RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, RID p_environment, RID p_shadow_atlas, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass) {
+void RasterizerSceneGLES3::render_scene(const Transform &p_cam_transform, const CameraMatrix &p_cam_projection, bool p_cam_orthogonal, InstanceBase **p_cull_result, int p_cull_count, RID *p_light_cull_result, int p_light_cull_count, RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, RID *p_atmosphere_cull_result, int p_atmosphere_cull_count, RID p_environment, RID p_shadow_atlas, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass) {
 
 	//first of all, make a new render pass
 	render_pass++;
@@ -4144,6 +4247,7 @@ void RasterizerSceneGLES3::render_scene(const Transform &p_cam_transform, const 
 
 	_setup_lights(p_light_cull_result, p_light_cull_count, p_cam_transform.affine_inverse(), p_cam_projection, p_shadow_atlas);
 	_setup_reflections(p_reflection_probe_cull_result, p_reflection_probe_cull_count, p_cam_transform.affine_inverse(), p_cam_projection, p_reflection_atlas, env);
+	_setup_atmospheres(p_atmosphere_cull_result, p_atmosphere_cull_count);
 
 	bool use_mrt = false;
 
@@ -4798,6 +4902,13 @@ bool RasterizerSceneGLES3::free(RID p_rid) {
 		reflection_probe_instance_owner.free(p_rid);
 		memdelete(reflection_instance);
 
+	} else if (atmosphere_instance_owner.owns(p_rid)) {
+
+		AtmosphereInstance *atmosphere_instance = atmosphere_instance_owner.get(p_rid);
+
+		atmosphere_instance_owner.free(p_rid);
+		memdelete(atmosphere_instance);
+
 	} else {
 		return false;
 	}
@@ -4998,6 +5109,13 @@ void RasterizerSceneGLES3::initialize() {
 
 		state.max_skeleton_bones = MIN(2048, max_ubo_size / (12 * sizeof(float)));
 		state.scene_shader.add_custom_define("#define MAX_SKELETON_BONES " + itos(state.max_skeleton_bones) + "\n");
+	}
+
+	{ //atmosphere
+		glGenBuffers(1, &state.atmosphere_ubo);
+		glBindBuffer(GL_UNIFORM_BUFFER, state.atmosphere_ubo);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(AtmosphereDataUBO), NULL, GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 	}
 
 	shadow_filter_mode = SHADOW_FILTER_NEAREST;

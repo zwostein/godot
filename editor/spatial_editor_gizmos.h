@@ -32,6 +32,7 @@
 #define SPATIAL_EDITOR_GIZMOS_H
 
 #include "editor/plugins/spatial_editor_plugin.h"
+#include "scene/3d/atmosphere.h"
 #include "scene/3d/audio_stream_player_3d.h"
 #include "scene/3d/baked_lightmap.h"
 #include "scene/3d/camera.h"
@@ -281,6 +282,19 @@ public:
 
 	void redraw();
 	ParticlesGizmo(Particles *p_particles = NULL);
+};
+
+class AtmosphereGizmo : public EditorSpatialGizmo {
+
+	GDCLASS(AtmosphereGizmo, EditorSpatialGizmo);
+
+	Atmosphere *atmosphere;
+
+	Vector<Vector3> sphereLines(float radius);
+
+public:
+	void redraw();
+	AtmosphereGizmo(Atmosphere *p_atmosphere = NULL);
 };
 
 class ReflectionProbeGizmo : public EditorSpatialGizmo {

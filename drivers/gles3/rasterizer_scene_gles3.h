@@ -177,6 +177,8 @@ public:
 		GLuint omni_array_ubo;
 		GLuint reflection_array_ubo;
 
+		GLuint atmosphere_ubo;
+
 		GLuint immediate_buffer;
 		GLuint immediate_array;
 
@@ -195,6 +197,7 @@ public:
 		int spot_light_count;
 		int omni_light_count;
 		int directional_light_count;
+		int atmosphere_count;
 		int reflection_probe_count;
 
 		bool cull_front;
@@ -353,6 +356,46 @@ public:
 	virtual bool reflection_probe_instance_has_reflection(RID p_instance);
 	virtual bool reflection_probe_instance_begin_render(RID p_instance, RID p_reflection_atlas);
 	virtual bool reflection_probe_instance_postprocess_step(RID p_instance);
+
+	/* ATMOSPHERE INSTANCE */
+
+	struct AtmosphereInstance : public RID_Data {
+
+		RasterizerStorageGLES3::Atmosphere *atmosphere_ptr;
+		RID atmosphere;
+		RID self;
+
+		int atmosphere_index;
+
+		Transform transform;
+	};
+
+	struct AtmosphereDataUBO {
+
+		float transform[16];
+		uint32_t num_in_scatter;
+		uint32_t num_out_scatter;
+		float outer_radius;
+		float inner_radius;
+		float surface_radius;
+		float surface_margin;
+		float ph_ray;
+		float ph_mie;
+		float k_ray[4];
+		float k_mie[4];
+		float k_mie_ex;
+		float g_mie;
+		float intensity;
+		float direct_irradiance_attenuation;
+		float indirect_irradiance_intensity;
+		uint32_t enable_shadows;
+		float shadow_bias;
+	};
+
+	mutable RID_Owner<AtmosphereInstance> atmosphere_instance_owner;
+
+	virtual RID atmosphere_instance_create(RID p_atmosphere);
+	virtual void atmosphere_instance_set_transform(RID p_instance, const Transform &p_transform);
 
 	/* ENVIRONMENT API */
 
@@ -658,6 +701,7 @@ public:
 			SORT_FLAG_SKELETON = 1,
 			SORT_FLAG_INSTANCING = 2,
 			MAX_DIRECTIONAL_LIGHTS = 16,
+			MAX_ATMOSPHERES = 4096,
 			MAX_LIGHTS = 4096,
 			MAX_REFLECTIONS = 1024,
 
@@ -667,6 +711,7 @@ public:
 			SORT_KEY_OPAQUE_DEPTH_LAYER_SHIFT = 52,
 			SORT_KEY_OPAQUE_DEPTH_LAYER_MASK = 0xF,
 //64 bits unsupported in MSVC
+#define SORT_KEY_ATMOSPHERE_FLAG (uint64_t(1) << 51)
 #define SORT_KEY_NO_FORWARD_LIGHTING_FLAG (uint64_t(1) << 50)
 #define SORT_KEY_UNSHADED_FLAG (uint64_t(1) << 49)
 #define SORT_KEY_NO_DIRECTIONAL_FLAG (uint64_t(1) << 48)
@@ -675,7 +720,7 @@ public:
 #define SORT_KEY_GI_PROBES_FLAG (uint64_t(1) << 45)
 #define SORT_KEY_VERTEX_LIT_FLAG (uint64_t(1) << 44)
 			SORT_KEY_SHADING_SHIFT = 44,
-			SORT_KEY_SHADING_MASK = 127,
+			SORT_KEY_SHADING_MASK = 255,
 			//44-28 material index
 			SORT_KEY_MATERIAL_INDEX_SHIFT = 28,
 			//28-8 geometry index
@@ -814,6 +859,9 @@ public:
 	LightInstance *directional_light;
 	LightInstance *directional_lights[RenderList::MAX_DIRECTIONAL_LIGHTS];
 
+	AtmosphereInstance *atmosphere;
+	AtmosphereInstance *atmospheres[RenderList::MAX_ATMOSPHERES];
+
 	RenderList render_list;
 
 	_FORCE_INLINE_ void _set_cull(bool p_front, bool p_disabled, bool p_reverse_cull);
@@ -835,6 +883,8 @@ public:
 	void _setup_directional_light(int p_index, const Transform &p_camera_inverse_transform, bool p_use_shadows);
 	void _setup_lights(RID *p_light_cull_result, int p_light_cull_count, const Transform &p_camera_inverse_transform, const CameraMatrix &p_camera_projection, RID p_shadow_atlas);
 	void _setup_reflections(RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, const Transform &p_camera_inverse_transform, const CameraMatrix &p_camera_projection, RID p_reflection_atlas, Environment *p_env);
+	void _setup_atmosphere(RenderList::Element *e);
+	void _setup_atmospheres(RID *p_atmosphere_cull_result, int p_atmosphere_cull_count);
 
 	void _copy_screen(bool p_invalidate_color = false, bool p_invalidate_depth = false);
 	void _copy_to_front_buffer(Environment *env);
@@ -846,7 +896,7 @@ public:
 	void _render_mrts(Environment *env, const CameraMatrix &p_cam_projection);
 	void _post_process(Environment *env, const CameraMatrix &p_cam_projection);
 
-	virtual void render_scene(const Transform &p_cam_transform, const CameraMatrix &p_cam_projection, bool p_cam_ortogonal, InstanceBase **p_cull_result, int p_cull_count, RID *p_light_cull_result, int p_light_cull_count, RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, RID p_environment, RID p_shadow_atlas, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass);
+	virtual void render_scene(const Transform &p_cam_transform, const CameraMatrix &p_cam_projection, bool p_cam_orthogonal, InstanceBase **p_cull_result, int p_cull_count, RID *p_light_cull_result, int p_light_cull_count, RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, RID *p_atmosphere_cull_result, int p_atmosphere_cull_count, RID p_environment, RID p_shadow_atlas, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass);
 	virtual void render_shadow(RID p_light, RID p_shadow_atlas, int p_pass, InstanceBase **p_cull_result, int p_cull_count);
 	virtual bool free(RID p_rid);
 

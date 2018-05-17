@@ -1700,6 +1700,7 @@ void RasterizerStorageGLES3::_update_shader(Shader *p_shader) const {
 			p_shader->spatial.uses_screen_texture = false;
 			p_shader->spatial.uses_depth_texture = false;
 			p_shader->spatial.uses_vertex = false;
+			p_shader->spatial.uses_atmosphere = false;
 			p_shader->spatial.writes_modelview_or_projection = false;
 			p_shader->spatial.uses_world_coordinates = false;
 			p_shader->spatial.no_forward_lighting = false;
@@ -1730,6 +1731,7 @@ void RasterizerStorageGLES3::_update_shader(Shader *p_shader) const {
 			shaders.actions_scene.usage_flag_pointers["ALPHA"] = &p_shader->spatial.uses_alpha;
 			shaders.actions_scene.usage_flag_pointers["ALPHA_SCISSOR"] = &p_shader->spatial.uses_alpha_scissor;
 
+			shaders.actions_scene.usage_flag_pointers["ATMOSPHERE_BACKGROUND"] = &p_shader->spatial.uses_atmosphere;
 			shaders.actions_scene.usage_flag_pointers["SSS_STRENGTH"] = &p_shader->spatial.uses_sss;
 			shaders.actions_scene.usage_flag_pointers["DISCARD"] = &p_shader->spatial.uses_discard;
 			shaders.actions_scene.usage_flag_pointers["SCREEN_TEXTURE"] = &p_shader->spatial.uses_screen_texture;
@@ -4974,6 +4976,274 @@ AABB RasterizerStorageGLES3::light_get_aabb(RID p_light) const {
 	return AABB();
 }
 
+/* ATMOSPHERE API */
+
+RID RasterizerStorageGLES3::atmosphere_create() {
+
+	Atmosphere *atmosphere = memnew(Atmosphere);
+
+	glActiveTexture(GL_TEXTURE0);
+
+	glGenFramebuffers(1, &atmosphere->tex_ray_mie_fb_id );
+	glBindFramebuffer(GL_FRAMEBUFFER, atmosphere->tex_ray_mie_fb_id );
+
+	glGenTextures(1, &atmosphere->tex_ray_mie_id );
+	glBindTexture(GL_TEXTURE_2D, atmosphere->tex_ray_mie_id );
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, config.atmosphere_ray_mie_height_resolution, config.atmosphere_ray_mie_angle_resolution, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, atmosphere->tex_ray_mie_id, 0);
+
+	CRASH_COND(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE);
+
+	glGenFramebuffers(1, &atmosphere->tex_irradiance_fb_id );
+	glBindFramebuffer(GL_FRAMEBUFFER, atmosphere->tex_irradiance_fb_id );
+
+	glGenTextures(1, &atmosphere->tex_irradiance_id );
+	glBindTexture(GL_TEXTURE_2D, atmosphere->tex_irradiance_id );
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, config.atmosphere_irradiance_height_resolution, config.atmosphere_irradiance_angle_resolution, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, atmosphere->tex_irradiance_id, 0);
+
+	CRASH_COND(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE);
+
+	atmosphere_update_list.add(&atmosphere->update_list);
+
+	return atmosphere_owner.make_rid(atmosphere);
+}
+
+void RasterizerStorageGLES3::update_dirty_atmospheres() {
+
+	while (atmosphere_update_list.first()) {
+
+		Atmosphere *atmosphere = atmosphere_update_list.first()->self();
+		//printf("update_dirty_atmospheres: %d\n",atmosphere->get_id());
+
+		glDisable(GL_CULL_FACE);
+		glDisable(GL_DEPTH_TEST);
+		glDisable(GL_SCISSOR_TEST);
+		glDisable(GL_BLEND);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, atmosphere->tex_ray_mie_fb_id );
+		glViewport(0, 0, config.atmosphere_ray_mie_height_resolution, config.atmosphere_ray_mie_angle_resolution);
+		shaders.atmosphere_ray_mie.bind();
+		shaders.atmosphere_ray_mie.set_uniform(AtmosphereRayMieShaderGLES3::ATMOSPHERE_OUTER_RADIUS, atmosphere->outer_radius);
+		shaders.atmosphere_ray_mie.set_uniform(AtmosphereRayMieShaderGLES3::ATMOSPHERE_INNER_RADIUS, atmosphere->inner_radius);
+		shaders.atmosphere_ray_mie.set_uniform(AtmosphereRayMieShaderGLES3::ATMOSPHERE_PH_RAY, atmosphere->ph_ray);
+		shaders.atmosphere_ray_mie.set_uniform(AtmosphereRayMieShaderGLES3::ATMOSPHERE_PH_MIE, atmosphere->ph_mie);
+		shaders.atmosphere_ray_mie.set_uniform(AtmosphereRayMieShaderGLES3::ATMOSPHERE_NUM_OUT_SCATTER, atmosphere->num_out_scatter);
+		glBindVertexArray(resources.quadie_array);
+		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+		glBindVertexArray(0);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, atmosphere->tex_irradiance_fb_id );
+		glActiveTexture(GL_TEXTURE0 + config.max_texture_image_units - 6);
+		glBindTexture(GL_TEXTURE_2D, atmosphere->tex_ray_mie_id );
+		glViewport(0, 0, config.atmosphere_irradiance_height_resolution, config.atmosphere_irradiance_angle_resolution);
+		shaders.atmosphere_irradiance.bind();
+		shaders.atmosphere_irradiance.set_uniform(AtmosphereIrradianceShaderGLES3::ATMOSPHERE_OUTER_RADIUS, atmosphere->outer_radius);
+		shaders.atmosphere_irradiance.set_uniform(AtmosphereIrradianceShaderGLES3::ATMOSPHERE_INNER_RADIUS, atmosphere->inner_radius);
+		shaders.atmosphere_irradiance.set_uniform(AtmosphereIrradianceShaderGLES3::ATMOSPHERE_NUM_IN_SCATTER, atmosphere->num_in_scatter);
+		shaders.atmosphere_irradiance.set_uniform(AtmosphereIrradianceShaderGLES3::ATMOSPHERE_K_RAY, atmosphere->k_ray);
+		shaders.atmosphere_irradiance.set_uniform(AtmosphereIrradianceShaderGLES3::ATMOSPHERE_K_MIE, atmosphere->k_mie);
+		shaders.atmosphere_irradiance.set_uniform(AtmosphereIrradianceShaderGLES3::ATMOSPHERE_K_MIE_EX, atmosphere->k_mie_ex);
+		shaders.atmosphere_irradiance.set_uniform(AtmosphereIrradianceShaderGLES3::ATMOSPHERE_G_MIE, atmosphere->g_mie);
+		shaders.atmosphere_irradiance.set_uniform(AtmosphereIrradianceShaderGLES3::ATMOSPHERE_IRRADIANCE_SAMPLES, config.atmosphere_irradiance_samples);
+		glBindVertexArray(resources.quadie_array);
+		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+		glBindVertexArray(0);
+
+		atmosphere->instance_change_notify();
+
+		atmosphere_update_list.remove(atmosphere_update_list.first());
+	}
+}
+
+void RasterizerStorageGLES3::atmosphere_set_num_out_scatter(RID p_atmosphere, unsigned int p_num_out_scatter) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->num_out_scatter = p_num_out_scatter;
+	if (!atmosphere->update_list.in_list()) {
+		atmosphere_update_list.add(&atmosphere->update_list);
+	}
+}
+
+void RasterizerStorageGLES3::atmosphere_set_num_in_scatter(RID p_atmosphere, unsigned int p_num_in_scatter) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->num_in_scatter = p_num_in_scatter;
+}
+
+void RasterizerStorageGLES3::atmosphere_set_outer_radius(RID p_atmosphere, float p_outer_radius) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->outer_radius = p_outer_radius;
+
+	if (!atmosphere->update_list.in_list()) {
+		atmosphere_update_list.add(&atmosphere->update_list);
+	}
+}
+
+void RasterizerStorageGLES3::atmosphere_set_surface_radius(RID p_atmosphere, float p_surface_radius) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->surface_radius = p_surface_radius;
+	if (!atmosphere->update_list.in_list()) {
+		atmosphere_update_list.add(&atmosphere->update_list);
+	}
+}
+
+void RasterizerStorageGLES3::atmosphere_set_surface_margin(RID p_atmosphere, float p_surface_margin) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->surface_margin = p_surface_margin;
+}
+
+void RasterizerStorageGLES3::atmosphere_set_inner_radius(RID p_atmosphere, float p_inner_radius) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->inner_radius = p_inner_radius;
+	if (!atmosphere->update_list.in_list()) {
+		atmosphere_update_list.add(&atmosphere->update_list);
+	}
+}
+
+void RasterizerStorageGLES3::atmosphere_set_ph_ray(RID p_atmosphere, float p_ph_ray) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->ph_ray = p_ph_ray;
+	if (!atmosphere->update_list.in_list()) {
+		atmosphere_update_list.add(&atmosphere->update_list);
+	}
+}
+
+void RasterizerStorageGLES3::atmosphere_set_ph_mie(RID p_atmosphere, float p_ph_mie) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->ph_mie = p_ph_mie;
+	if (!atmosphere->update_list.in_list()) {
+		atmosphere_update_list.add(&atmosphere->update_list);
+	}
+}
+
+void RasterizerStorageGLES3::atmosphere_set_k_ray(RID p_atmosphere, const Vector3 & p_k_ray) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->k_ray = p_k_ray;
+	if (!atmosphere->update_list.in_list()) {
+		atmosphere_update_list.add(&atmosphere->update_list);
+	}
+}
+
+void RasterizerStorageGLES3::atmosphere_set_k_mie(RID p_atmosphere, const Vector3 & p_k_mie) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->k_mie = p_k_mie;
+	if (!atmosphere->update_list.in_list()) {
+		atmosphere_update_list.add(&atmosphere->update_list);
+	}
+}
+
+void RasterizerStorageGLES3::atmosphere_set_k_mie_ex(RID p_atmosphere, float p_k_mie_ex) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->k_mie_ex = p_k_mie_ex;
+	if (!atmosphere->update_list.in_list()) {
+		atmosphere_update_list.add(&atmosphere->update_list);
+	}
+}
+
+void RasterizerStorageGLES3::atmosphere_set_g_mie(RID p_atmosphere, float p_g_mie) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->g_mie = p_g_mie;
+	if (!atmosphere->update_list.in_list()) {
+		atmosphere_update_list.add(&atmosphere->update_list);
+	}
+}
+
+void RasterizerStorageGLES3::atmosphere_set_intensity(RID p_atmosphere, float p_intensity) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->intensity = p_intensity;
+}
+
+void RasterizerStorageGLES3::atmosphere_set_direct_irradiance_attenuation(RID p_atmosphere, float p_attenuation) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->direct_irradiance_attenuation = p_attenuation;
+}
+
+void RasterizerStorageGLES3::atmosphere_set_indirect_irradiance_intensity(RID p_atmosphere, float p_intensity) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->indirect_irradiance_intensity = p_intensity;
+}
+
+void RasterizerStorageGLES3::atmosphere_set_enable_shadows(RID p_atmosphere, bool p_enable) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->enable_shadows = p_enable;
+}
+
+void RasterizerStorageGLES3::atmosphere_set_shadow_bias(RID p_atmosphere, float p_shadow_bias) {
+
+	Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND(!atmosphere);
+
+	atmosphere->shadow_bias = p_shadow_bias;
+}
+
+AABB RasterizerStorageGLES3::atmosphere_get_aabb(RID p_atmosphere) const {
+	const Atmosphere *atmosphere = atmosphere_owner.getornull(p_atmosphere);
+	ERR_FAIL_COND_V(!atmosphere, AABB());
+
+	AABB aabb;
+	aabb.position = Vector3(-atmosphere->outer_radius, -atmosphere->outer_radius, -atmosphere->outer_radius);
+	aabb.size = Vector3(atmosphere->outer_radius*2.0, atmosphere->outer_radius*2.0, atmosphere->outer_radius*2.0);
+
+	return aabb;
+}
+
 /* PROBE API */
 
 RID RasterizerStorageGLES3::reflection_probe_create() {
@@ -6169,6 +6439,10 @@ void RasterizerStorageGLES3::instance_add_dependency(RID p_base, RasterizerScene
 			inst = lightmap_capture_data_owner.getornull(p_base);
 			ERR_FAIL_COND(!inst);
 		} break;
+		case VS::INSTANCE_ATMOSPHERE: {
+			inst = atmosphere_owner.getornull(p_base);
+			ERR_FAIL_COND(!inst);
+		} break;
 		default: {
 			if (!inst) {
 				ERR_FAIL();
@@ -6214,6 +6488,10 @@ void RasterizerStorageGLES3::instance_remove_dependency(RID p_base, RasterizerSc
 		} break;
 		case VS::INSTANCE_LIGHTMAP_CAPTURE: {
 			inst = lightmap_capture_data_owner.getornull(p_base);
+			ERR_FAIL_COND(!inst);
+		} break;
+		case VS::INSTANCE_ATMOSPHERE: {
+			inst = atmosphere_owner.getornull(p_base);
 			ERR_FAIL_COND(!inst);
 		} break;
 		default: {
@@ -6970,6 +7248,10 @@ VS::InstanceType RasterizerStorageGLES3::get_base_type(RID p_rid) const {
 		return VS::INSTANCE_LIGHTMAP_CAPTURE;
 	}
 
+	if (atmosphere_owner.owns(p_rid)) {
+		return VS::INSTANCE_ATMOSPHERE;
+	}
+
 	return VS::INSTANCE_NONE;
 }
 
@@ -7140,6 +7422,18 @@ bool RasterizerStorageGLES3::free(RID p_rid) {
 
 		reflection_probe_owner.free(p_rid);
 		memdelete(reflection_probe);
+
+	} else if (atmosphere_owner.owns(p_rid)) {
+
+		// delete the texture
+		Atmosphere *atmosphere = atmosphere_owner.get(p_rid);
+		atmosphere->instance_remove_deps();
+
+		glDeleteTextures(1, &atmosphere->tex_ray_mie_id );
+		glDeleteFramebuffers(1, &atmosphere->tex_ray_mie_fb_id );
+
+		atmosphere_owner.free(p_rid);
+		memdelete(atmosphere);
 
 	} else if (gi_probe_owner.owns(p_rid)) {
 
@@ -7476,6 +7770,8 @@ void RasterizerStorageGLES3::initialize() {
 	bool ggx_hq = GLOBAL_GET("rendering/quality/reflections/high_quality_ggx.mobile");
 	shaders.cubemap_filter.set_conditional(CubemapFilterShaderGLES3::LOW_QUALITY, !ggx_hq);
 	shaders.particles.init();
+	shaders.atmosphere_ray_mie.init();
+	shaders.atmosphere_irradiance.init();
 
 #ifdef GLES_OVER_GL
 	glEnable(_EXT_TEXTURE_CUBE_MAP_SEAMLESS);
@@ -7508,6 +7804,12 @@ void RasterizerStorageGLES3::initialize() {
 			}
 		}
 	}
+
+	config.atmosphere_ray_mie_height_resolution = GLOBAL_GET("rendering/quality/atmosphere/ray_mie_height_resolution");
+	config.atmosphere_ray_mie_angle_resolution = GLOBAL_GET("rendering/quality/atmosphere/ray_mie_angle_resolution");
+	config.atmosphere_irradiance_height_resolution = GLOBAL_GET("rendering/quality/atmosphere/irradiance_height_resolution");
+	config.atmosphere_irradiance_angle_resolution = GLOBAL_GET("rendering/quality/atmosphere/irradiance_angle_resolution");
+	config.atmosphere_irradiance_samples = GLOBAL_GET("rendering/quality/atmosphere/irradiance_samples");
 }
 
 void RasterizerStorageGLES3::finalize() {
@@ -7519,6 +7821,7 @@ void RasterizerStorageGLES3::finalize() {
 
 void RasterizerStorageGLES3::update_dirty_resources() {
 
+	update_dirty_atmospheres();
 	update_dirty_multimeshes();
 	update_dirty_skeletons();
 	update_dirty_shaders();

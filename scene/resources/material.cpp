@@ -260,6 +260,8 @@ void SpatialMaterial::init_shaders() {
 	shader_names->depth_min_layers = "depth_min_layers";
 	shader_names->depth_max_layers = "depth_max_layers";
 
+	shader_names->atmosphere_background = "atmosphere_background";
+
 	shader_names->grow = "grow";
 
 	shader_names->ao_light_affect = "ao_light_affect";
@@ -493,6 +495,11 @@ void SpatialMaterial::_update_shader() {
 		code += "uniform int depth_min_layers;\n";
 		code += "uniform int depth_max_layers;\n";
 	}
+
+	if (features[FEATURE_ATMOSPHERE]) {
+		code += "uniform bool atmosphere_background = false;\n";
+	}
+
 	if (flags[FLAG_UV1_USE_TRIPLANAR]) {
 		code += "varying vec3 uv1_triplanar_pos;\n";
 	}
@@ -888,6 +895,10 @@ void SpatialMaterial::_update_shader() {
 
 	if (flags[FLAG_USE_ALPHA_SCISSOR]) {
 		code += "\tALPHA_SCISSOR=alpha_scissor_threshold;\n";
+	}
+
+	if (features[FEATURE_ATMOSPHERE]) {
+		code += "\tATMOSPHERE_BACKGROUND = atmosphere_background;\n";
 	}
 
 	code += "}\n";
@@ -1291,6 +1302,7 @@ void SpatialMaterial::_validate_property(PropertyInfo &property) const {
 	_validate_feature("transmission", FEATURE_TRANSMISSION, property);
 	_validate_feature("refraction", FEATURE_REFRACTION, property);
 	_validate_feature("detail", FEATURE_DETAIL, property);
+	_validate_feature("atmosphere", FEATURE_ATMOSPHERE, property);
 
 	if (property.name.begins_with("particles_anim_") && billboard_mode != BILLBOARD_PARTICLES) {
 		property.usage = 0;
@@ -1657,6 +1669,20 @@ float SpatialMaterial::get_distance_fade_min_distance() const {
 	return distance_fade_min_distance;
 }
 
+void SpatialMaterial::set_atmosphere_background(bool p_enable) {
+
+	atmosphere_background = p_enable;
+	VS::get_singleton()->material_set_param(_get_material(), shader_names->atmosphere_background, atmosphere_background);
+	_queue_shader_change();
+	_change_notify();
+}
+
+bool SpatialMaterial::is_atmosphere_background() const {
+
+	return atmosphere_background;
+}
+
+
 void SpatialMaterial::set_emission_operator(EmissionOperator p_op) {
 
 	if (emission_op == p_op)
@@ -1848,6 +1874,9 @@ void SpatialMaterial::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_distance_fade_min_distance", "distance"), &SpatialMaterial::set_distance_fade_min_distance);
 	ClassDB::bind_method(D_METHOD("get_distance_fade_min_distance"), &SpatialMaterial::get_distance_fade_min_distance);
 
+	ClassDB::bind_method(D_METHOD("set_atmosphere_background", "atmosphere"), &SpatialMaterial::set_atmosphere_background);
+	ClassDB::bind_method(D_METHOD("is_atmosphere_background"), &SpatialMaterial::is_atmosphere_background);
+
 	ADD_GROUP("Flags", "flags_");
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_transparent"), "set_feature", "get_feature", FEATURE_TRANSPARENT);
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "flags_unshaded"), "set_flag", "get_flag", FLAG_UNSHADED);
@@ -1986,6 +2015,10 @@ void SpatialMaterial::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "distance_fade_min_distance", PROPERTY_HINT_RANGE, "0,4096,0.1"), "set_distance_fade_min_distance", "get_distance_fade_min_distance");
 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "distance_fade_max_distance", PROPERTY_HINT_RANGE, "0,4096,0.1"), "set_distance_fade_max_distance", "get_distance_fade_max_distance");
 
+	ADD_GROUP("Atmosphere", "atmosphere_");
+	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "atmosphere_enabled"), "set_feature", "get_feature", FEATURE_ATMOSPHERE);
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "atmosphere_background"), "set_atmosphere_background", "is_atmosphere_background");
+
 	BIND_ENUM_CONSTANT(TEXTURE_ALBEDO);
 	BIND_ENUM_CONSTANT(TEXTURE_METALLIC);
 	BIND_ENUM_CONSTANT(TEXTURE_ROUGHNESS);
@@ -2019,6 +2052,7 @@ void SpatialMaterial::_bind_methods() {
 	BIND_ENUM_CONSTANT(FEATURE_TRANSMISSION);
 	BIND_ENUM_CONSTANT(FEATURE_REFRACTION);
 	BIND_ENUM_CONSTANT(FEATURE_DETAIL);
+	BIND_ENUM_CONSTANT(FEATURE_ATMOSPHERE);
 	BIND_ENUM_CONSTANT(FEATURE_MAX);
 
 	BIND_ENUM_CONSTANT(BLEND_MODE_MIX);
@@ -2120,6 +2154,8 @@ SpatialMaterial::SpatialMaterial() :
 	set_proximity_fade_distance(1);
 	set_distance_fade_min_distance(0);
 	set_distance_fade_max_distance(10);
+
+	set_atmosphere_background(false);
 
 	set_ao_light_affect(0.0);
 

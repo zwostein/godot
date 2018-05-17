@@ -41,6 +41,8 @@
 #include "shaders/copy.glsl.gen.h"
 #include "shaders/cubemap_filter.glsl.gen.h"
 #include "shaders/particles.glsl.gen.h"
+#include "shaders/atmosphere_ray_mie.glsl.gen.h"
+#include "shaders/atmosphere_irradiance.glsl.gen.h"
 
 class RasterizerCanvasGLES3;
 class RasterizerSceneGLES3;
@@ -97,6 +99,12 @@ public:
 
 		bool no_depth_prepass;
 		bool force_vertex_shading;
+
+		int atmosphere_ray_mie_height_resolution;
+		int atmosphere_ray_mie_angle_resolution;
+		int atmosphere_irradiance_height_resolution;
+		int atmosphere_irradiance_angle_resolution;
+		int atmosphere_irradiance_samples;
 	} config;
 
 	mutable struct Shaders {
@@ -110,6 +118,9 @@ public:
 		BlendShapeShaderGLES3 blend_shapes;
 
 		ParticlesShaderGLES3 particles;
+
+		AtmosphereRayMieShaderGLES3 atmosphere_ray_mie;
+		AtmosphereIrradianceShaderGLES3 atmosphere_irradiance;
 
 		ShaderCompilerGLES3::IdentifierActions actions_canvas;
 		ShaderCompilerGLES3::IdentifierActions actions_scene;
@@ -476,6 +487,7 @@ public:
 			bool uses_sss;
 			bool uses_screen_texture;
 			bool uses_depth_texture;
+			bool uses_atmosphere;
 			bool uses_time;
 			bool writes_modelview_or_projection;
 			bool uses_vertex_lighting;
@@ -960,6 +972,90 @@ public:
 
 	virtual AABB light_get_aabb(RID p_light) const;
 	virtual uint64_t light_get_version(RID p_light) const;
+
+	/* ATMOSPHERE API */
+
+	struct Atmosphere : Instantiable {
+
+		unsigned int num_out_scatter;
+		unsigned int num_in_scatter;
+		float inner_radius;
+		float surface_radius;
+		float surface_margin;
+		float outer_radius;
+		float ph_ray;
+		float ph_mie;
+		Vector3 k_ray;
+		Vector3 k_mie;
+		float k_mie_ex;
+		float g_mie;
+		float intensity;
+		float direct_irradiance_attenuation;
+		float indirect_irradiance_intensity;
+		bool enable_shadows;
+		float shadow_bias;
+
+		GLuint tex_ray_mie_id;
+		GLuint tex_ray_mie_fb_id;
+		GLuint tex_irradiance_id;
+		GLuint tex_irradiance_fb_id;
+
+		SelfList<Atmosphere> update_list;
+
+		Atmosphere():
+				update_list(this) {
+			num_out_scatter = 8;
+			num_in_scatter = 32;
+			inner_radius = 1.0;
+			surface_radius = 1.0;
+			surface_margin = 0.001;
+			outer_radius = 2.0;
+			ph_ray = 0.05;
+			ph_mie = 0.02;
+			k_ray = Vector3(3.8, 13.5, 33.1);
+			k_mie = Vector3(21.0, 21.0, 21.0);
+			k_mie_ex = 1.1;
+			g_mie = -0.78;
+			intensity = 4.0;
+			direct_irradiance_attenuation = 1.0;
+			indirect_irradiance_intensity = 1.0;
+			enable_shadows = true;
+			shadow_bias = 0.0;
+
+			tex_ray_mie_id = 0;
+			tex_ray_mie_fb_id = 0;
+			tex_irradiance_id = 0;
+			tex_irradiance_fb_id = 0;
+		}
+	};
+
+	mutable RID_Owner<Atmosphere> atmosphere_owner;
+
+	SelfList<Atmosphere>::List atmosphere_update_list;
+
+	void update_dirty_atmospheres();
+
+	virtual RID atmosphere_create();
+
+	virtual void atmosphere_set_num_out_scatter(RID p_atmosphere, unsigned int p_num_out_scatter);
+	virtual void atmosphere_set_num_in_scatter(RID p_atmosphere, unsigned int p_num_in_scatter);
+	virtual void atmosphere_set_inner_radius(RID p_atmosphere, float p_inner_radius);
+	virtual void atmosphere_set_surface_radius(RID p_atmosphere, float p_surface_radius);
+	virtual void atmosphere_set_surface_margin(RID p_atmosphere, float p_surface_margin);
+	virtual void atmosphere_set_outer_radius(RID p_atmosphere, float p_outer_radius);
+	virtual void atmosphere_set_ph_ray(RID p_atmosphere, float p_ph_ray);
+	virtual void atmosphere_set_ph_mie(RID p_atmosphere, float p_ph_mie);
+	virtual void atmosphere_set_k_ray(RID p_atmosphere, const Vector3 & p_k_ray);
+	virtual void atmosphere_set_k_mie(RID p_atmosphere, const Vector3 & p_k_mie);
+	virtual void atmosphere_set_k_mie_ex(RID p_atmosphere, float p_k_mie_ex);
+	virtual void atmosphere_set_g_mie(RID p_atmosphere, float p_g_mie);
+	virtual void atmosphere_set_intensity(RID p_atmosphere, float p_intensity);
+	virtual void atmosphere_set_direct_irradiance_attenuation(RID p_atmosphere, float p_attenuation);
+	virtual void atmosphere_set_indirect_irradiance_intensity(RID p_atmosphere, float p_intensity);
+	virtual void atmosphere_set_enable_shadows(RID p_atmosphere, bool p_enable);
+	virtual void atmosphere_set_shadow_bias(RID p_atmosphere, float p_shadow_bias);
+
+	virtual AABB atmosphere_get_aabb(RID p_atmosphere) const;
 
 	/* PROBE API */
 

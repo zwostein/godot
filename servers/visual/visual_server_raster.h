@@ -316,6 +316,28 @@ public:
 	BIND2(light_directional_set_blend_splits, RID, bool)
 	BIND2(light_directional_set_shadow_depth_range_mode, RID, LightDirectionalShadowDepthRangeMode)
 
+	/* ATMOSPHERE API */
+
+	BIND0R(RID, atmosphere_create)
+
+	BIND2(atmosphere_set_num_out_scatter, RID, unsigned int)
+	BIND2(atmosphere_set_num_in_scatter, RID, unsigned int)
+	BIND2(atmosphere_set_inner_radius, RID, float)
+	BIND2(atmosphere_set_surface_radius, RID, float)
+	BIND2(atmosphere_set_surface_margin, RID, float)
+	BIND2(atmosphere_set_outer_radius, RID, float)
+	BIND2(atmosphere_set_ph_ray, RID, float)
+	BIND2(atmosphere_set_ph_mie, RID, float)
+	BIND2(atmosphere_set_k_ray, RID, const Vector3 &)
+	BIND2(atmosphere_set_k_mie, RID, const Vector3 &)
+	BIND2(atmosphere_set_k_mie_ex, RID, float)
+	BIND2(atmosphere_set_g_mie, RID, float)
+	BIND2(atmosphere_set_intensity, RID, float)
+	BIND2(atmosphere_set_direct_irradiance_attenuation, RID, float)
+	BIND2(atmosphere_set_indirect_irradiance_intensity, RID, float)
+	BIND2(atmosphere_set_enable_shadows, RID, bool)
+	BIND2(atmosphere_set_shadow_bias, RID, float)
+
 	/* PROBE API */
 
 	BIND0R(RID, reflection_probe_create)

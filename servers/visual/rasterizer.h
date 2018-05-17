@@ -97,6 +97,7 @@ public:
 
 		Vector<RID> materials;
 		Vector<RID> light_instances;
+		Vector<RID> atmosphere_instances;
 		Vector<RID> reflection_probe_instances;
 		Vector<RID> gi_probe_instances;
 
@@ -157,7 +158,10 @@ public:
 	virtual void gi_probe_instance_set_transform_to_data(RID p_probe, const Transform &p_xform) = 0;
 	virtual void gi_probe_instance_set_bounds(RID p_probe, const Vector3 &p_bounds) = 0;
 
-	virtual void render_scene(const Transform &p_cam_transform, const CameraMatrix &p_cam_projection, bool p_cam_ortogonal, InstanceBase **p_cull_result, int p_cull_count, RID *p_light_cull_result, int p_light_cull_count, RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, RID p_environment, RID p_shadow_atlas, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass) = 0;
+	virtual RID atmosphere_instance_create(RID p_probe) = 0;
+	virtual void atmosphere_instance_set_transform(RID p_instance, const Transform &p_transform) = 0;
+
+	virtual void render_scene(const Transform &p_cam_transform, const CameraMatrix &p_cam_projection, bool p_cam_orthogonal, InstanceBase **p_cull_result, int p_cull_count, RID *p_light_cull_result, int p_light_cull_count, RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, RID *p_atmosphere_cull_result, int p_atmosphere_cull_count, RID p_environment, RID p_shadow_atlas, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass) = 0;
 	virtual void render_shadow(RID p_light, RID p_shadow_atlas, int p_pass, InstanceBase **p_cull_result, int p_cull_count) = 0;
 
 	virtual void set_scene_pass(uint64_t p_pass) = 0;
@@ -368,6 +372,30 @@ public:
 	virtual float light_get_param(RID p_light, VS::LightParam p_param) = 0;
 	virtual Color light_get_color(RID p_light) = 0;
 	virtual uint64_t light_get_version(RID p_light) const = 0;
+
+	/* ATMOSPHERE API */
+
+	virtual RID atmosphere_create() = 0;
+
+	virtual void atmosphere_set_num_out_scatter(RID p_atmosphere, unsigned int p_num_out_scatter) = 0;
+	virtual void atmosphere_set_num_in_scatter(RID p_atmosphere, unsigned int p_num_in_scatter) = 0;
+	virtual void atmosphere_set_inner_radius(RID p_atmosphere, float p_inner_radius) = 0;
+	virtual void atmosphere_set_surface_radius(RID p_atmosphere, float p_surface_radius) = 0;
+	virtual void atmosphere_set_surface_margin(RID p_atmosphere, float p_surface_margin) = 0;
+	virtual void atmosphere_set_outer_radius(RID p_atmosphere, float p_outer_radius) = 0;
+	virtual void atmosphere_set_ph_ray(RID p_atmosphere, float p_ph_ray) = 0;
+	virtual void atmosphere_set_ph_mie(RID p_atmosphere, float p_ph_mie) = 0;
+	virtual void atmosphere_set_k_ray(RID p_atmosphere, const Vector3 & p_k_ray) = 0;
+	virtual void atmosphere_set_k_mie(RID p_atmosphere, const Vector3 & p_k_mie) = 0;
+	virtual void atmosphere_set_k_mie_ex(RID p_atmosphere, float p_k_mie_ex) = 0;
+	virtual void atmosphere_set_g_mie(RID p_atmosphere, float p_g_mie) = 0;
+	virtual void atmosphere_set_intensity(RID p_atmosphere, float p_intensity) = 0;
+	virtual void atmosphere_set_direct_irradiance_attenuation(RID p_atmosphere, float p_attenuation) = 0;
+	virtual void atmosphere_set_indirect_irradiance_intensity(RID p_atmosphere, float p_intensity) = 0;
+	virtual void atmosphere_set_enable_shadows(RID p_atmosphere, bool p_enable) = 0;
+	virtual void atmosphere_set_shadow_bias(RID p_atmosphere, float p_shadow_bias) = 0;
+
+	virtual AABB atmosphere_get_aabb(RID p_atmosphere) const = 0;
 
 	/* PROBE API */
 

@@ -149,6 +149,7 @@ public:
 		FEATURE_TRANSMISSION,
 		FEATURE_REFRACTION,
 		FEATURE_DETAIL,
+		FEATURE_ATMOSPHERE,
 		FEATURE_MAX
 	};
 
@@ -332,6 +333,7 @@ private:
 		StringName proximity_fade_distance;
 		StringName distance_fade_min;
 		StringName distance_fade_max;
+		StringName atmosphere_background;
 		StringName ao_light_affect;
 
 		StringName metallic_texture_channel;
@@ -402,6 +404,8 @@ private:
 	bool distance_fade_enabled;
 	float distance_fade_max_distance;
 	float distance_fade_min_distance;
+
+	bool atmosphere_background;
 
 	BlendMode blend_mode;
 	BlendMode detail_blend_mode;
@@ -588,6 +592,9 @@ public:
 
 	void set_distance_fade_min_distance(float p_distance);
 	float get_distance_fade_min_distance() const;
+
+	void set_atmosphere_background(bool p_enable);
+	bool is_atmosphere_background() const;
 
 	void set_emission_operator(EmissionOperator p_op);
 	EmissionOperator get_emission_operator() const;

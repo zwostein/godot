@@ -86,6 +86,9 @@ public:
 	void light_instance_set_shadow_transform(RID p_light_instance, const CameraMatrix &p_projection, const Transform &p_transform, float p_far, float p_split, int p_pass, float p_bias_scale = 1.0) {}
 	void light_instance_mark_visible(RID p_light_instance) {}
 
+	RID atmosphere_instance_create(RID p_atmosphere) { return RID(); }
+	void atmosphere_instance_set_transform(RID p_instance, const Transform &p_transform) {}
+
 	RID reflection_atlas_create() { return RID(); }
 	void reflection_atlas_set_size(RID p_ref_atlas, int p_size) {}
 	void reflection_atlas_set_subdivision(RID p_ref_atlas, int p_subdiv) {}
@@ -103,7 +106,7 @@ public:
 	void gi_probe_instance_set_transform_to_data(RID p_probe, const Transform &p_xform) {}
 	void gi_probe_instance_set_bounds(RID p_probe, const Vector3 &p_bounds) {}
 
-	void render_scene(const Transform &p_cam_transform, const CameraMatrix &p_cam_projection, bool p_cam_ortogonal, InstanceBase **p_cull_result, int p_cull_count, RID *p_light_cull_result, int p_light_cull_count, RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, RID p_environment, RID p_shadow_atlas, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass) {}
+	void render_scene(const Transform &p_cam_transform, const CameraMatrix &p_cam_projection, bool p_cam_ortogonal, InstanceBase **p_cull_result, int p_cull_count, RID *p_light_cull_result, int p_light_cull_count, RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, RID *p_atmosphere_cull_result, int p_atmosphere_cull_count, RID p_environment, RID p_shadow_atlas, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass) {}
 	void render_shadow(RID p_light, RID p_shadow_atlas, int p_pass, InstanceBase **p_cull_result, int p_cull_count) {}
 
 	void set_scene_pass(uint64_t p_pass) {}
@@ -494,6 +497,30 @@ public:
 	float light_get_param(RID p_light, VS::LightParam p_param) { return 0.0; }
 	Color light_get_color(RID p_light) { return Color(); }
 	uint64_t light_get_version(RID p_light) const { return 0; }
+
+	/* ATMOSPHERE API */
+
+	RID atmosphere_create() { return RID(); }
+
+	void atmosphere_set_num_out_scatter(RID p_atmosphere, unsigned int p_num_out_scatter) {}
+	void atmosphere_set_num_in_scatter(RID p_atmosphere, unsigned int p_num_in_scatter) {}
+	void atmosphere_set_inner_radius(RID p_atmosphere, float p_inner_radius) {}
+	void atmosphere_set_surface_radius(RID p_atmosphere, float p_surface_radius) {}
+	void atmosphere_set_surface_margin(RID p_atmosphere, float p_surface_margin) {}
+	void atmosphere_set_outer_radius(RID p_atmosphere, float p_outer_radius) {}
+	void atmosphere_set_ph_ray(RID p_atmosphere, float p_ph_ray) {}
+	void atmosphere_set_ph_mie(RID p_atmosphere, float p_ph_mie) {}
+	void atmosphere_set_k_ray(RID p_atmosphere, const Vector3 & p_k_ray) {}
+	void atmosphere_set_k_mie(RID p_atmosphere, const Vector3 & p_k_mie) {}
+	void atmosphere_set_k_mie_ex(RID p_atmosphere, float p_k_mie_ex) {}
+	void atmosphere_set_g_mie(RID p_atmosphere, float p_g_mie) {}
+	void atmosphere_set_intensity(RID p_atmosphere, float p_intensity) {}
+	void atmosphere_set_direct_irradiance_attenuation(RID p_atmosphere, float p_attenuation) {}
+	void atmosphere_set_indirect_irradiance_intensity(RID p_atmosphere, float p_intensity) {}
+	void atmosphere_set_enable_shadows(RID p_atmosphere, bool p_enable) {}
+	void atmosphere_set_shadow_bias(RID p_atmosphere, float p_shadow_bias) {}
+
+	AABB atmosphere_get_aabb(RID p_atmosphere) const { return AABB(); }
 
 	/* PROBE API */
 

@@ -1,6 +1,10 @@
 [vertex]
 
 #define M_PI 3.14159265359
+#define FLT_MAX 3.402823466e+38
+#define FLT_MIN 1.175494351e-38
+#define DBL_MAX 1.7976931348623158e+308
+#define DBL_MIN 2.2250738585072014e-308
 
 /*
 from VisualServer:
@@ -209,6 +213,30 @@ void light_process_spot(int idx, vec3 vertex, vec3 eye_vec, vec3 normal, float r
 }
 
 
+#endif
+
+#ifdef USE_ATMOSPHERE
+layout(std140) uniform AtmosphereData { //ubo:7
+	highp mat4 atmosphere_transform;
+	uint atmosphere_num_in_scatter;
+	uint atmosphere_num_out_scatter;
+	highp float atmosphere_outer_radius;
+	highp float atmosphere_inner_radius;
+	highp float atmosphere_surface_radius;
+	highp float atmosphere_surface_margin;
+	highp float atmosphere_ph_ray;
+	highp float atmosphere_ph_mie;
+	mediump vec4 atmosphere_k_ray;
+	mediump vec4 atmosphere_k_mie;
+	mediump float atmosphere_k_mie_ex;
+	mediump float atmosphere_g_mie;
+	mediump float atmosphere_intensity;
+	mediump float atmosphere_direct_irradiance_intensity;
+	mediump float atmosphere_indirect_irradiance_intensity;
+	bool atmosphere_enable_shadows;
+	mediump float atmosphere_shadow_bias;
+};
+out vec3 atmosphere_ray_pos_interp;
 #endif
 
 /* Varyings */
@@ -471,6 +499,10 @@ VERTEX_SHADER_CODE
 
 #endif //RENDER_DEPTH
 
+#ifdef USE_ATMOSPHERE
+	atmosphere_ray_pos_interp = -( camera_inverse_matrix * atmosphere_transform[3] ).xyz;
+#endif
+
 	gl_Position = projection_matrix * vec4(vertex_interp,1.0);
 
 	position_interp=gl_Position;
@@ -545,6 +577,10 @@ VERTEX_SHADER_CODE
 uniform highp mat4 world_transform;
 
 #define M_PI 3.14159265359
+#define FLT_MAX 3.402823466e+38
+#define FLT_MIN 1.175494351e-38
+#define DBL_MAX 1.7976931348623158e+308
+#define DBL_MIN 2.2250738585072014e-308
 
 /* Varyings */
 
@@ -563,6 +599,10 @@ in vec2 uv2_interp;
 #if defined(ENABLE_TANGENT_INTERP) || defined(ENABLE_NORMALMAP) || defined(LIGHT_USE_ANISOTROPY)
 in vec3 tangent_interp;
 in vec3 binormal_interp;
+#endif
+
+#if defined(USE_ATMOSPHERE)
+in vec3 atmosphere_ray_pos_interp;
 #endif
 
 in highp vec3 vertex_interp;
@@ -878,6 +918,460 @@ float contact_shadow_compute(vec3 pos, vec3 dir, float max_distance) {
 #endif
 
 
+float sample_shadow(highp sampler2DShadow shadow, vec2 shadow_pixel_size, vec2 pos, float depth, vec4 clamp_rect) {
+
+#ifdef SHADOW_MODE_PCF_13
+
+	float avg=textureProj(shadow,vec4(pos,depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(shadow_pixel_size.x,0.0),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(-shadow_pixel_size.x,0.0),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(0.0,shadow_pixel_size.y),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(0.0,-shadow_pixel_size.y),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(shadow_pixel_size.x,shadow_pixel_size.y),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(-shadow_pixel_size.x,shadow_pixel_size.y),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(shadow_pixel_size.x,-shadow_pixel_size.y),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(-shadow_pixel_size.x,-shadow_pixel_size.y),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(shadow_pixel_size.x*2.0,0.0),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(-shadow_pixel_size.x*2.0,0.0),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(0.0,shadow_pixel_size.y*2.0),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(0.0,-shadow_pixel_size.y*2.0),depth,1.0));
+	return avg*(1.0/13.0);
+
+#elif defined(SHADOW_MODE_PCF_5)
+
+	float avg=textureProj(shadow,vec4(pos,depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(shadow_pixel_size.x,0.0),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(-shadow_pixel_size.x,0.0),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(0.0,shadow_pixel_size.y),depth,1.0));
+	avg+=textureProj(shadow,vec4(pos+vec2(0.0,-shadow_pixel_size.y),depth,1.0));
+	return avg*(1.0/5.0);
+
+#else
+
+	return textureProj(shadow,vec4(pos,depth,1.0));
+
+#endif
+
+}
+
+
+vec3 lightAttenuationDirectionalShadow(highp vec3 vertex, highp mat4 shadow_matrix1, highp mat4 shadow_matrix2, highp mat4 shadow_matrix3, highp mat4 shadow_matrix4, mediump vec4 shadow_split_offsets)
+{
+	vec3 light_attenuation=vec3(1.0);
+
+#ifdef LIGHT_DIRECTIONAL_SHADOW
+#if !defined(SHADOWS_DISABLED)
+	float depth_z = -vertex.z;
+
+#ifdef LIGHT_USE_PSSM4
+	if (depth_z < shadow_split_offsets.w)
+#elif defined(LIGHT_USE_PSSM2)
+	if (depth_z < shadow_split_offsets.y)
+#else
+	if (depth_z < shadow_split_offsets.x)
+#endif //LIGHT_USE_PSSM4
+	{
+
+	vec3 pssm_coord;
+	float pssm_fade=0.0;
+
+#ifdef LIGHT_USE_PSSM_BLEND
+	float pssm_blend;
+	vec3 pssm_coord2;
+	bool use_blend=true;
+#endif
+
+
+#ifdef LIGHT_USE_PSSM4
+
+
+	if (depth_z < shadow_split_offsets.y) {
+
+		if (depth_z < shadow_split_offsets.x) {
+
+			highp vec4 splane=(shadow_matrix1 * vec4(vertex,1.0));
+			pssm_coord=splane.xyz/splane.w;
+
+
+#if defined(LIGHT_USE_PSSM_BLEND)
+
+			splane=(shadow_matrix2 * vec4(vertex,1.0));
+			pssm_coord2=splane.xyz/splane.w;
+			pssm_blend=smoothstep(0.0,shadow_split_offsets.x,depth_z);
+#endif
+
+		} else {
+
+			highp vec4 splane=(shadow_matrix2 * vec4(vertex,1.0));
+			pssm_coord=splane.xyz/splane.w;
+
+#if defined(LIGHT_USE_PSSM_BLEND)
+			splane=(shadow_matrix3 * vec4(vertex,1.0));
+			pssm_coord2=splane.xyz/splane.w;
+			pssm_blend=smoothstep(shadow_split_offsets.x,shadow_split_offsets.y,depth_z);
+#endif
+
+		}
+	} else {
+
+
+		if (depth_z < shadow_split_offsets.z) {
+
+			highp vec4 splane=(shadow_matrix3 * vec4(vertex,1.0));
+			pssm_coord=splane.xyz/splane.w;
+
+#if defined(LIGHT_USE_PSSM_BLEND)
+			splane=(shadow_matrix4 * vec4(vertex,1.0));
+			pssm_coord2=splane.xyz/splane.w;
+			pssm_blend=smoothstep(shadow_split_offsets.y,shadow_split_offsets.z,depth_z);
+#endif
+
+		} else {
+
+			highp vec4 splane=(shadow_matrix4 * vec4(vertex,1.0));
+			pssm_coord=splane.xyz/splane.w;
+			pssm_fade = smoothstep(shadow_split_offsets.z,shadow_split_offsets.w,depth_z);
+
+#if defined(LIGHT_USE_PSSM_BLEND)
+			use_blend=false;
+
+#endif
+
+		}
+	}
+
+
+
+#endif //LIGHT_USE_PSSM4
+
+#ifdef LIGHT_USE_PSSM2
+
+	if (depth_z < shadow_split_offsets.x) {
+
+		highp vec4 splane=(shadow_matrix1 * vec4(vertex,1.0));
+		pssm_coord=splane.xyz/splane.w;
+
+
+#if defined(LIGHT_USE_PSSM_BLEND)
+
+		splane=(shadow_matrix2 * vec4(vertex,1.0));
+		pssm_coord2=splane.xyz/splane.w;
+		pssm_blend=smoothstep(0.0,shadow_split_offsets.x,depth_z);
+#endif
+
+	} else {
+		highp vec4 splane=(shadow_matrix2 * vec4(vertex,1.0));
+		pssm_coord=splane.xyz/splane.w;
+		pssm_fade = smoothstep(shadow_split_offsets.x,shadow_split_offsets.y,depth_z);
+#if defined(LIGHT_USE_PSSM_BLEND)
+		use_blend=false;
+
+#endif
+
+	}
+
+#endif //LIGHT_USE_PSSM2
+
+#if !defined(LIGHT_USE_PSSM4) && !defined(LIGHT_USE_PSSM2)
+	{ //regular orthogonal
+		highp vec4 splane=(shadow_matrix1 * vec4(vertex,1.0));
+		pssm_coord=splane.xyz/splane.w;
+	}
+#endif
+
+
+	//one one sample
+
+	float shadow = sample_shadow(directional_shadow,directional_shadow_pixel_size,pssm_coord.xy,pssm_coord.z,light_clamp);
+
+#if defined(LIGHT_USE_PSSM_BLEND)
+
+	if (use_blend) {
+		shadow=mix(shadow, sample_shadow(directional_shadow,directional_shadow_pixel_size,pssm_coord2.xy,pssm_coord2.z,light_clamp),pssm_blend);
+	}
+#endif
+
+#ifdef USE_CONTACT_SHADOWS
+	if (shadow>0.01 && shadow_color_contact.a>0.0) {
+
+		float contact_shadow = contact_shadow_compute(vertex,-light_direction_attenuation.xyz,shadow_color_contact.a);
+		shadow=min(shadow,contact_shadow);
+
+	}
+#endif
+	light_attenuation=mix(mix(shadow_color_contact.rgb,vec3(1.0),shadow),vec3(1.0),pssm_fade);
+
+
+	}
+
+#endif // !defined(SHADOWS_DISABLED)
+#endif //LIGHT_DIRECTIONAL_SHADOW
+	return light_attenuation;
+}
+
+
+
+
+
+bool atmosphere_background = false;
+
+#if defined(USE_ATMOSPHERE) && defined(USE_LIGHT_DIRECTIONAL)
+
+layout(std140) uniform AtmosphereData { //ubo:0
+	highp mat4 atmosphere_transform;
+	uint atmosphere_num_in_scatter;
+	uint atmosphere_num_out_scatter;
+	highp float atmosphere_outer_radius;
+	highp float atmosphere_inner_radius;
+	highp float atmosphere_surface_radius;
+	highp float atmosphere_surface_margin;
+	highp float atmosphere_ph_ray;
+	highp float atmosphere_ph_mie;
+	mediump vec4 atmosphere_k_ray;
+	mediump vec4 atmosphere_k_mie;
+	mediump float atmosphere_k_mie_ex;
+	mediump float atmosphere_g_mie;
+	mediump float atmosphere_intensity;
+	mediump float atmosphere_direct_irradiance_intensity;
+	mediump float atmosphere_indirect_irradiance_intensity;
+	bool atmosphere_enable_shadows;
+	mediump float atmosphere_shadow_bias;
+};
+uniform highp sampler2D atmosphere_lut_ray_mie; //texunit:-6
+uniform highp sampler2D atmosphere_lut_irradiance; //texunit:-11
+
+// ray intersects sphere
+// e = -b +/- sqrt( b^2 - c )
+vec2 intersectRaySphere(vec3 ray_origin, vec3 ray_dir, float radius_squared) {
+	float b = dot(ray_origin, ray_dir);
+	float c = dot(ray_origin, ray_origin) - radius_squared;
+	if (c > 0.0 && b > 0.0)	// ray outside of sphere and pointing away
+		return vec2(FLT_MAX, -FLT_MAX);
+	float d = b * b - c;
+	if (d < 0.0)	// ray missing sphere
+		return vec2(FLT_MAX, -FLT_MAX);
+	d = sqrt( d );
+	return vec2(max(0.0,-b-d), -b+d);
+}
+
+// Mie
+// g : ( -0.75, -0.999 )
+//      3 * ( 1 - g^2 )               1 + c^2
+// F = ----------------- * -------------------------------
+//      8pi * ( 2 + g^2 )     ( 1 + g^2 - 2 * g * c )^(3/2)
+float atmospherePhaseMie(float g, float c, float cc) {
+	float gg = g * g;
+	float a = (1.0 - gg) * (1.0 + cc);
+	float b = 1.0 + gg - 2.0 * g * c;
+	b *= sqrt(b);
+	b *= 2.0 + gg;
+	return (3.0 / 8.0 / M_PI) * a / b;
+}
+
+// Rayleigh
+// g : 0
+// F = 3/16PI * ( 1 + c^2 )
+float atmospherePhaseRay(float cc) {
+	return (3.0 / 16.0 / M_PI) * (1.0 + cc);
+}
+
+#if defined(ATMOSPHERE_DEBUG)
+
+// Density at a given height above atmosphere's inner radius
+float atmosphereDensity(float height, float ph) {
+	return exp(-height / ph);
+}
+
+// Optical depth from any ray starting inside the atmosphere
+void atmosphereOpticalLength( in vec3 ray_orig, in vec3 ray_dir, out float ray, out float mie ) {
+	vec2 f = intersectRaySphere(ray_orig, ray_dir, atmosphere_outer_radius * atmosphere_outer_radius);
+	float out_step_len = f.y / float(atmosphere_num_out_scatter);
+	vec3 out_step = ray_dir * out_step_len;
+	vec3 out_pos = ray_orig + out_step * 0.5;
+	ray = 0.0;
+	mie = 0.0;
+	for (uint o = uint(0); o < atmosphere_num_out_scatter; o++) {
+		float height = max(length(out_pos) - atmosphere_inner_radius, 0.0);
+		ray += atmosphereDensity(height, atmosphere_ph_ray);
+		mie += atmosphereDensity(height, atmosphere_ph_mie);
+		out_pos += out_step;
+	}
+	ray *= out_step_len;
+	mie *= out_step_len;
+}
+
+// Reference scatter implementation using no precalculations
+vec3 atmosphereScatter_ref(inout vec3 light_color, inout vec3 ambient_color, in vec3 normal, in vec3 light_dir, in vec3 ray_pos, in vec3 ray_dir, in vec3 vertex, in bool is_background) {
+	// "segment" - The ray's line segment that receives scattering from atmosphere.
+	// Start with the ray's enter and exit points of the outer atmosphere.
+	vec2 segment = intersectRaySphere(ray_pos, ray_dir, atmosphere_outer_radius * atmosphere_outer_radius);
+	if (segment.y < 0.0) // ray not intersecting atmosphere
+		return vec3(0.0);
+
+	if (is_background) {
+		// In background mode, assume there is always direct sight to the outer atmosphere and skip checking for intersections to the surface/inner sphere.
+	} else {
+		// If not in background mode - only calculate scatter to the object itself - and skip scatter completely if object is outside atmosphere.
+		float d = length(vertex);
+
+		// No scatter if atmosphere completely behind fragment or fragment behind atmosphere (background should be blended on top)
+		if (segment.x > d || segment.y <= d)
+			return vec3(0.0);
+
+		//segment.y = d;
+		// Usually you would use some kind of sphere to approximate the surface - but then the edges of the sphere's faces might cause "mountains" with visibly less scattered light.
+		// This fixes it by casting another ray to the "surface" sphere. (Should be the same radius as the vertices of the sphere's mesh)
+		// In case the observer gets near this sphere, its radius is lowered to keep the view to the upper atmosphere clear.
+		float max_surface_radius = max(0.0,length(ray_pos)-atmosphere_surface_margin);
+		float effective_surface_radius = min(max_surface_radius, atmosphere_surface_radius);
+		vec2 surface_segment = intersectRaySphere(ray_pos, ray_dir, effective_surface_radius*effective_surface_radius);
+		segment.y = min(d, surface_segment.x);
+	}
+
+	vec3 sum_ray = vec3(0.0);
+	vec3 sum_mie = vec3(0.0);
+	float n_ray0 = 0.0;
+	float n_mie0 = 0.0;
+
+	float in_step_len = (segment.y - segment.x) / float(atmosphere_num_in_scatter);
+	vec3 in_step = ray_dir * in_step_len;
+	vec3 in_pos = ray_pos + ray_dir * segment.x + in_step * 0.5;
+	float atmo_thickness = atmosphere_outer_radius-atmosphere_inner_radius;
+	vec3 shadow_offset = light_dir*atmosphere_shadow_bias - ray_pos;
+
+	for (uint i = uint(0); i < atmosphere_num_in_scatter; i++)
+	{
+		float height = max(length(in_pos) - atmosphere_inner_radius, 0.0);
+		float d_ray = atmosphereDensity(height, atmosphere_ph_ray) * in_step_len;
+		float d_mie = atmosphereDensity(height, atmosphere_ph_mie) * in_step_len;
+		n_ray0 += d_ray;
+		n_mie0 += d_mie;
+
+		float n_ray1 = 0.0;
+		float n_mie1 = 0.0;
+		atmosphereOpticalLength(in_pos, light_dir, n_ray1, n_mie1);
+
+		vec3 att = exp(-(n_ray0 + n_ray1) * atmosphere_k_ray.xyz -(n_mie0 + n_mie1) * atmosphere_k_mie.xyz * atmosphere_k_mie_ex);
+		if (atmosphere_enable_shadows)
+			att *= lightAttenuationDirectionalShadow(in_pos+shadow_offset, shadow_matrix1, shadow_matrix2, shadow_matrix3, shadow_matrix4, shadow_split_offsets);
+		sum_ray += d_ray * att;
+		sum_mie += d_mie * att;
+		in_pos += in_step;
+	}
+
+	float c  = dot( ray_dir, -light_dir );
+	float cc = c * c;
+	vec3 scatter = sum_ray * atmosphere_k_ray.xyz * atmospherePhaseRay(cc);
+	if (atmosphere_enable_shadows || is_background)
+		scatter += sum_mie * atmosphere_k_mie.xyz * atmospherePhaseMie(atmosphere_g_mie, c, cc);
+	else //HACK: if shadows are disabled, fade out mie scattering depending on angle between surface normal and light direction - this looks better for objects occluding the sun
+		scatter += sum_mie * atmosphere_k_mie.xyz * atmospherePhaseMie(atmosphere_g_mie, c, cc) * clamp((dot(normal,light_dir)*2.0+1.0),0.0,1.0);
+	scatter *= atmosphere_intensity * light_color;
+
+	if (!is_background)
+	{
+		vec3 vertex_pos = vertex+ray_pos;
+
+		float n_ray1 = 0.0;
+		float n_mie1 = 0.0;
+		atmosphereOpticalLength(vertex_pos, light_dir, n_ray1, n_mie1);
+
+		//ambient_color += light_color * atmosphere_indirect_irradiance_intensity * texture(atmosphere_lut_irradiance, vec2(height_coord, angle_coord)).rgb * clamp((dot(normal,normalize(in_pos))+1.0)*0.5,0.0,1.0);
+		light_color *= mix(vec3(1.0), exp(-n_ray1 * atmosphere_k_ray.xyz -n_mie1 * atmosphere_k_mie.xyz), atmosphere_direct_irradiance_intensity);
+	}
+
+	return scatter;
+}
+
+#endif
+
+vec3 atmosphereScatter(inout vec3 light_color, inout vec3 ambient_color, in vec3 normal, in vec3 light_dir, in vec3 ray_pos, in vec3 ray_dir, in vec3 vertex, in bool is_background) {
+	// "segment" - The ray's line segment that receives scattering from atmosphere.
+	// Start with the ray's enter and exit points of the outer atmosphere.
+	vec2 segment = intersectRaySphere(ray_pos, ray_dir, atmosphere_outer_radius * atmosphere_outer_radius);
+	if (segment.y < 0.0) // ray not intersecting atmosphere
+		return vec3(0.0);
+
+	if (is_background) {
+		// In background mode, assume there is always direct sight to the outer atmosphere and skip checking for intersections to the surface/inner sphere.
+	} else {
+		// If not in background mode - only calculate scatter to the object itself.
+		float d = length(vertex);
+
+		// No scatter if atmosphere completely behind fragment or fragment behind atmosphere (background should be blended on top)
+		if (segment.x > d || segment.y <= d)
+			return vec3(0.0);
+
+		//segment.y = d;
+		// Usually you would use some kind of sphere to approximate the surface - but then the edges of the sphere's faces might cause "mountains" with visibly less scattered light.
+		// This fixes it by casting another ray to the "surface" sphere. (Should be the same radius as the vertices of the sphere's mesh)
+		// In case the observer gets near this sphere, its radius is lowered to keep the view to the upper atmosphere clear.
+		float max_surface_radius = max(0.0,length(ray_pos)-atmosphere_surface_margin);
+		float effective_surface_radius = min(max_surface_radius, atmosphere_surface_radius);
+		vec2 surface_segment = intersectRaySphere(ray_pos, ray_dir, effective_surface_radius*effective_surface_radius);
+		segment.y = min(d, surface_segment.x);
+	}
+
+	vec3 sum_ray = vec3(0.0);
+	vec3 sum_mie = vec3(0.0);
+	float n_ray0 = 0.0;
+	float n_mie0 = 0.0;
+	float n_ray1 = 0.0;
+	float n_mie1 = 0.0;
+	float height_coord = 0.0;
+	float angle_coord = 0.0;
+
+	float in_step_len = (segment.y - segment.x) / float(atmosphere_num_in_scatter);
+	vec3 in_step = ray_dir * in_step_len;
+	vec3 in_pos = ray_pos + ray_dir * segment.x + in_step * 0.5;
+	float atmo_thickness = atmosphere_outer_radius-atmosphere_inner_radius;
+	vec3 shadow_offset = light_dir*atmosphere_shadow_bias - ray_pos;
+
+	for (uint i = uint(0); i < atmosphere_num_in_scatter; i++)
+	{
+		float in_pos_height = length(in_pos);
+		height_coord = clamp((in_pos_height-atmosphere_inner_radius) / atmo_thickness, 0.0, 1.0);
+		angle_coord = (dot(in_pos/in_pos_height, light_dir) + 1.0) * 0.5;
+
+		vec4 precomputed = texture(atmosphere_lut_ray_mie, vec2(height_coord, angle_coord)).rgba;
+		float d_ray = precomputed.r * in_step_len;
+		n_ray1 = precomputed.g;
+		float d_mie = precomputed.b * in_step_len;
+		n_mie1 = precomputed.a;
+
+		n_ray0 += d_ray;
+		n_mie0 += d_mie;
+
+		vec3 att = exp(-(n_ray0 + n_ray1) * atmosphere_k_ray.xyz -(n_mie0 + n_mie1) * atmosphere_k_mie.xyz * atmosphere_k_mie_ex);
+		if( atmosphere_enable_shadows )
+			att *= lightAttenuationDirectionalShadow(in_pos+shadow_offset, shadow_matrix1, shadow_matrix2, shadow_matrix3, shadow_matrix4, shadow_split_offsets);
+		sum_ray += d_ray * att;
+		sum_mie += d_mie * att;
+		in_pos += in_step;
+	}
+
+	float c  = dot( ray_dir, -light_dir );
+	float cc = c * c;
+	vec3 scatter = sum_ray * atmosphere_k_ray.xyz * atmospherePhaseRay(cc);
+	if( atmosphere_enable_shadows || is_background )
+		scatter += sum_mie * atmosphere_k_mie.xyz * atmospherePhaseMie(atmosphere_g_mie, c, cc);
+	else //HACK: if shadows are disabled, fade out mie scattering depending on angle between surface normal and light direction - this looks better for objects occluding the sun
+		scatter += sum_mie * atmosphere_k_mie.xyz * atmospherePhaseMie(atmosphere_g_mie, c, cc) * clamp((dot(normal,light_dir)*2.0+1.0),0.0,1.0);
+	scatter *= atmosphere_intensity * light_color;
+
+	if (!is_background)
+	{
+		// reusing data of inner loop for irradiance (should be close enough to the actual fragment to make no visible difference)
+		ambient_color += light_color * atmosphere_indirect_irradiance_intensity * texture(atmosphere_lut_irradiance, vec2(height_coord, angle_coord)).rgb * clamp((dot(normal,normalize(in_pos))+1.0)*0.5,0.0,1.0);
+		light_color *= mix(vec3(1.0), exp(-n_ray1 * atmosphere_k_ray.xyz -n_mie1 * atmosphere_k_mie.xyz), atmosphere_direct_irradiance_intensity);
+	}
+
+	return scatter;
+}
+
+#endif
+
+
 // This returns the G_GGX function divided by 2 cos_theta_m, where in practice cos_theta_m is either N.L or N.V.
 // We're dividing this factor off because the overall term we'll end up looks like
 // (see, for example, the first unnumbered equation in B. Burley, "Physically Based Shading at Disney", SIGGRAPH 2012):
@@ -1133,47 +1627,9 @@ LIGHT_SHADER_CODE
 		}
 #endif
 	}
-
-
 #endif //defined(USE_LIGHT_SHADER_CODE)
 }
 
-
-float sample_shadow(highp sampler2DShadow shadow, vec2 shadow_pixel_size, vec2 pos, float depth, vec4 clamp_rect) {
-
-#ifdef SHADOW_MODE_PCF_13
-
-	float avg=textureProj(shadow,vec4(pos,depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(shadow_pixel_size.x,0.0),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(-shadow_pixel_size.x,0.0),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(0.0,shadow_pixel_size.y),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(0.0,-shadow_pixel_size.y),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(shadow_pixel_size.x,shadow_pixel_size.y),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(-shadow_pixel_size.x,shadow_pixel_size.y),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(shadow_pixel_size.x,-shadow_pixel_size.y),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(-shadow_pixel_size.x,-shadow_pixel_size.y),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(shadow_pixel_size.x*2.0,0.0),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(-shadow_pixel_size.x*2.0,0.0),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(0.0,shadow_pixel_size.y*2.0),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(0.0,-shadow_pixel_size.y*2.0),depth,1.0));
-	return avg*(1.0/13.0);
-
-#elif defined(SHADOW_MODE_PCF_5)
-
-	float avg=textureProj(shadow,vec4(pos,depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(shadow_pixel_size.x,0.0),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(-shadow_pixel_size.x,0.0),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(0.0,shadow_pixel_size.y),depth,1.0));
-	avg+=textureProj(shadow,vec4(pos+vec2(0.0,-shadow_pixel_size.y),depth,1.0));
-	return avg*(1.0/5.0);
-
-#else
-
-	return textureProj(shadow,vec4(pos,depth,1.0));
-
-#endif
-
-}
 
 #ifdef RENDER_DEPTH_DUAL_PARABOLOID
 
@@ -1601,7 +2057,6 @@ void gi_probes_compute(vec3 pos, vec3 normal, float roughness, inout vec3 out_sp
 #endif
 
 
-
 void main() {
 
 #ifdef RENDER_DEPTH_DUAL_PARABOLOID
@@ -1747,6 +2202,10 @@ FRAGMENT_SHADER_CODE
 	vec3 env_reflection_light = vec3(0.0,0.0,0.0);
 
 	vec3 eye_vec = -normalize( vertex_interp );
+#ifdef USE_ATMOSPHERE
+	vec3 atmosphere_ray_pos = atmosphere_ray_pos_interp;
+#endif
+	vec3 scatter = vec3(0.0,0.0,0.0);
 
 
 
@@ -1798,165 +2257,22 @@ FRAGMENT_SHADER_CODE
 #endif
 
 #if defined(USE_LIGHT_DIRECTIONAL)
-
-	vec3 light_attenuation=vec3(1.0);
-
-	float depth_z = -vertex.z;
-#ifdef LIGHT_DIRECTIONAL_SHADOW
-#if !defined(SHADOWS_DISABLED)
-
-#ifdef LIGHT_USE_PSSM4
-	if (depth_z < shadow_split_offsets.w) {
-#elif defined(LIGHT_USE_PSSM2)
-	if (depth_z < shadow_split_offsets.y) {
-#else
-	if (depth_z < shadow_split_offsets.x) {
-#endif //LIGHT_USE_PSSM4
-
-	vec3 pssm_coord;
-	float pssm_fade=0.0;
-
-#ifdef LIGHT_USE_PSSM_BLEND
-	float pssm_blend;
-	vec3 pssm_coord2;
-	bool use_blend=true;
-#endif
-
-
-#ifdef LIGHT_USE_PSSM4
-
-
-	if (depth_z < shadow_split_offsets.y) {
-
-		if (depth_z < shadow_split_offsets.x) {
-
-			highp vec4 splane=(shadow_matrix1 * vec4(vertex,1.0));
-			pssm_coord=splane.xyz/splane.w;
-
-
-#if defined(LIGHT_USE_PSSM_BLEND)
-
-			splane=(shadow_matrix2 * vec4(vertex,1.0));
-			pssm_coord2=splane.xyz/splane.w;
-			pssm_blend=smoothstep(0.0,shadow_split_offsets.x,depth_z);
-#endif
-
-		} else {
-
-			highp vec4 splane=(shadow_matrix2 * vec4(vertex,1.0));
-			pssm_coord=splane.xyz/splane.w;
-
-#if defined(LIGHT_USE_PSSM_BLEND)
-			splane=(shadow_matrix3 * vec4(vertex,1.0));
-			pssm_coord2=splane.xyz/splane.w;
-			pssm_blend=smoothstep(shadow_split_offsets.x,shadow_split_offsets.y,depth_z);
-#endif
-
-		}
-	} else {
-
-
-		if (depth_z < shadow_split_offsets.z) {
-
-			highp vec4 splane=(shadow_matrix3 * vec4(vertex,1.0));
-			pssm_coord=splane.xyz/splane.w;
-
-#if defined(LIGHT_USE_PSSM_BLEND)
-			splane=(shadow_matrix4 * vec4(vertex,1.0));
-			pssm_coord2=splane.xyz/splane.w;
-			pssm_blend=smoothstep(shadow_split_offsets.y,shadow_split_offsets.z,depth_z);
-#endif
-
-		} else {
-
-			highp vec4 splane=(shadow_matrix4 * vec4(vertex,1.0));
-			pssm_coord=splane.xyz/splane.w;
-			pssm_fade = smoothstep(shadow_split_offsets.z,shadow_split_offsets.w,depth_z);
-
-#if defined(LIGHT_USE_PSSM_BLEND)
-			use_blend=false;
-
-#endif
-
-		}
-	}
-
-
-
-#endif //LIGHT_USE_PSSM4
-
-#ifdef LIGHT_USE_PSSM2
-
-	if (depth_z < shadow_split_offsets.x) {
-
-		highp vec4 splane=(shadow_matrix1 * vec4(vertex,1.0));
-		pssm_coord=splane.xyz/splane.w;
-
-
-#if defined(LIGHT_USE_PSSM_BLEND)
-
-		splane=(shadow_matrix2 * vec4(vertex,1.0));
-		pssm_coord2=splane.xyz/splane.w;
-		pssm_blend=smoothstep(0.0,shadow_split_offsets.x,depth_z);
-#endif
-
-	} else {
-		highp vec4 splane=(shadow_matrix2 * vec4(vertex,1.0));
-		pssm_coord=splane.xyz/splane.w;
-		pssm_fade = smoothstep(shadow_split_offsets.x,shadow_split_offsets.y,depth_z);
-#if defined(LIGHT_USE_PSSM_BLEND)
-		use_blend=false;
-
-#endif
-
-	}
-
-#endif //LIGHT_USE_PSSM2
-
-#if !defined(LIGHT_USE_PSSM4) && !defined(LIGHT_USE_PSSM2)
-	{ //regular orthogonal
-		highp vec4 splane=(shadow_matrix1 * vec4(vertex,1.0));
-		pssm_coord=splane.xyz/splane.w;
-	}
-#endif
-
-
-	//one one sample
-
-	float shadow = sample_shadow(directional_shadow,directional_shadow_pixel_size,pssm_coord.xy,pssm_coord.z,light_clamp);
-
-#if defined(LIGHT_USE_PSSM_BLEND)
-
-	if (use_blend) {
-		shadow=mix(shadow, sample_shadow(directional_shadow,directional_shadow_pixel_size,pssm_coord2.xy,pssm_coord2.z,light_clamp),pssm_blend);
-	}
-#endif
-
-#ifdef USE_CONTACT_SHADOWS
-	if (shadow>0.01 && shadow_color_contact.a>0.0) {
-
-		float contact_shadow = contact_shadow_compute(vertex,-light_direction_attenuation.xyz,shadow_color_contact.a);
-		shadow=min(shadow,contact_shadow);
-
-	}
-#endif
-	light_attenuation=mix(mix(shadow_color_contact.rgb,vec3(1.0),shadow),vec3(1.0),pssm_fade);
-
-
-	}
-
-
-#endif // !defined(SHADOWS_DISABLED)
-#endif //LIGHT_DIRECTIONAL_SHADOW
-
+	vec3 light_attenuation = lightAttenuationDirectionalShadow(vertex,shadow_matrix1,shadow_matrix2,shadow_matrix3,shadow_matrix4,shadow_split_offsets);
 #ifdef USE_VERTEX_LIGHTING
 	diffuse_light*=mix(vec3(1.0),light_attenuation,diffuse_light_interp.a);
 	specular_light*=mix(vec3(1.0),light_attenuation,specular_light_interp.a);
-
 #else
-	light_compute(normal,-light_direction_attenuation.xyz,eye_vec,binormal,tangent,light_color_energy.rgb,light_attenuation,albedo,transmission,light_params.z*specular_blob_intensity,roughness,metallic,rim,rim_tint,clearcoat,clearcoat_gloss,anisotropy,diffuse_light,specular_light);
+	vec3 attenuated_light_color_energy = light_color_energy.rgb;
+#ifdef USE_ATMOSPHERE
+#if defined(ATMOSPHERE_DEBUG)
+	if( mod(2.0*time,2.0) >= 1.0 )
+		scatter = atmosphereScatter_ref(attenuated_light_color_energy, ambient_light, normal,-light_direction_attenuation.xyz, atmosphere_ray_pos, -eye_vec, vertex, atmosphere_background);
+	else
 #endif
-
+		scatter = atmosphereScatter(attenuated_light_color_energy, ambient_light, normal,-light_direction_attenuation.xyz, atmosphere_ray_pos, -eye_vec, vertex, atmosphere_background);
+#endif
+	light_compute(normal,-light_direction_attenuation.xyz,eye_vec,binormal,tangent,attenuated_light_color_energy,light_attenuation,albedo,transmission,light_params.z*specular_blob_intensity,roughness,metallic,rim,rim_tint,clearcoat,clearcoat_gloss,anisotropy,diffuse_light,specular_light);
+#endif
 
 #endif //#USE_LIGHT_DIRECTIONAL
 
@@ -2170,7 +2486,7 @@ FRAGMENT_SHADER_CODE
 #ifdef SHADELESS
 	frag_color=vec4(albedo,alpha);
 #else
-	frag_color=vec4(emission+ambient_light+diffuse_light+specular_light,alpha);
+	frag_color=vec4(scatter+emission+ambient_light+diffuse_light+specular_light,alpha);
 #endif //SHADELESS
 
 

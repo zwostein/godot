@@ -171,6 +171,7 @@
 #ifndef _3D_DISABLED
 #include "scene/3d/area.h"
 #include "scene/3d/arvr_nodes.h"
+#include "scene/3d/atmosphere.h"
 #include "scene/3d/audio_stream_player_3d.h"
 #include "scene/3d/baked_lightmap.h"
 #include "scene/3d/bone_attachment.h"
@@ -379,6 +380,7 @@ void register_scene_types() {
 	ClassDB::register_class<DirectionalLight>();
 	ClassDB::register_class<OmniLight>();
 	ClassDB::register_class<SpotLight>();
+	ClassDB::register_class<Atmosphere>();
 	ClassDB::register_class<ReflectionProbe>();
 	ClassDB::register_class<GIProbe>();
 	ClassDB::register_class<GIProbeData>();

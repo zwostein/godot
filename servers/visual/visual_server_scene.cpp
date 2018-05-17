@@ -134,6 +134,18 @@ void *VisualServerScene::_instance_pair(void *p_self, OctreeElementID, Instance 
 		geom->reflection_dirty = true;
 
 		return E; //this element should make freeing faster
+	} else if (B->base_type == VS::INSTANCE_ATMOSPHERE && ((1 << A->base_type) & VS::INSTANCE_GEOMETRY_MASK)) {
+
+		InstanceAtmosphereData *atmosphere = static_cast<InstanceAtmosphereData *>(B->base_data);
+		InstanceGeometryData *geom = static_cast<InstanceGeometryData *>(A->base_data);
+
+		InstanceAtmosphereData::PairInfo pinfo;
+		pinfo.geometry = A;
+		pinfo.L = geom->atmospheres.push_back(B);
+
+		List<InstanceAtmosphereData::PairInfo>::Element *E = atmosphere->geometries.push_back(pinfo);
+
+		return E; //this element should make freeing faster
 	} else if (B->base_type == VS::INSTANCE_LIGHTMAP_CAPTURE && ((1 << A->base_type) & VS::INSTANCE_GEOMETRY_MASK)) {
 
 		InstanceLightmapCaptureData *lightmap_capture = static_cast<InstanceLightmapCaptureData *>(B->base_data);
@@ -207,6 +219,16 @@ void VisualServerScene::_instance_unpair(void *p_self, OctreeElementID, Instance
 		reflection_probe->geometries.erase(E);
 
 		geom->reflection_dirty = true;
+	} else if (B->base_type == VS::INSTANCE_ATMOSPHERE && ((1 << A->base_type) & VS::INSTANCE_GEOMETRY_MASK)) {
+
+		InstanceAtmosphereData *atmosphere = static_cast<InstanceAtmosphereData *>(B->base_data);
+		InstanceGeometryData *geom = static_cast<InstanceGeometryData *>(A->base_data);
+
+		List<InstanceAtmosphereData::PairInfo>::Element *E = reinterpret_cast<List<InstanceAtmosphereData::PairInfo>::Element *>(udata);
+
+		geom->atmospheres.erase(E->get().L);
+		atmosphere->geometries.erase(E);
+
 	} else if (B->base_type == VS::INSTANCE_LIGHTMAP_CAPTURE && ((1 << A->base_type) & VS::INSTANCE_GEOMETRY_MASK)) {
 
 		InstanceLightmapCaptureData *lightmap_capture = static_cast<InstanceLightmapCaptureData *>(B->base_data);
@@ -376,6 +398,12 @@ void VisualServerScene::instance_set_base(RID p_instance, RID p_base) {
 					instance_set_use_lightmap(lightmap_capture->users.front()->get()->self, RID(), RID());
 				}
 			} break;
+			case VS::INSTANCE_ATMOSPHERE: {
+
+				InstanceAtmosphereData *atmosphere = static_cast<InstanceAtmosphereData *>(instance->base_data);
+//				printf("instance_set_base: removed atmosphere:%d\n",atmosphere->instance.get_id());
+				VSG::scene_render->free(atmosphere->instance);
+			} break;
 			case VS::INSTANCE_GI_PROBE: {
 
 				InstanceGIProbeData *gi_probe = static_cast<InstanceGIProbeData *>(instance->base_data);
@@ -458,6 +486,15 @@ void VisualServerScene::instance_set_base(RID p_instance, RID p_base) {
 				instance->base_data = lightmap_capture;
 				//lightmap_capture->instance = VSG::scene_render->lightmap_capture_instance_create(p_base);
 			} break;
+			case VS::INSTANCE_ATMOSPHERE: {
+
+				InstanceAtmosphereData *atmosphere = memnew(InstanceAtmosphereData);
+				atmosphere->owner = instance;
+				instance->base_data = atmosphere;
+
+				atmosphere->instance = VSG::scene_render->atmosphere_instance_create(p_base);
+//				printf("instance_set_base: added atmosphere:%d\n",atmosphere->instance.get_id());
+			} break;
 			case VS::INSTANCE_GI_PROBE: {
 
 				InstanceGIProbeData *gi_probe = memnew(InstanceGIProbeData);
@@ -506,6 +543,11 @@ void VisualServerScene::instance_set_scenario(RID p_instance, RID p_scenario) {
 					light->D = NULL;
 				}
 			} break;
+			case VS::INSTANCE_ATMOSPHERE: {
+
+				InstanceAtmosphereData *atmosphere = static_cast<InstanceAtmosphereData *>(instance->base_data);
+//				printf("instance_set_scenario: removed atmosphere:%d\n",atmosphere->instance.get_id());
+			} break;
 			case VS::INSTANCE_REFLECTION_PROBE: {
 
 				InstanceReflectionProbeData *reflection_probe = static_cast<InstanceReflectionProbeData *>(instance->base_data);
@@ -541,6 +583,11 @@ void VisualServerScene::instance_set_scenario(RID p_instance, RID p_scenario) {
 				if (VSG::storage->light_get_type(instance->base) == VS::LIGHT_DIRECTIONAL) {
 					light->D = scenario->directional_lights.push_back(instance);
 				}
+			} break;
+			case VS::INSTANCE_ATMOSPHERE: {
+
+				InstanceAtmosphereData *atmosphere = static_cast<InstanceAtmosphereData *>(instance->base_data);
+//				printf("instance_set_scenario: added atmosphere:%d\n",atmosphere->instance.get_id());
 			} break;
 			case VS::INSTANCE_GI_PROBE: {
 
@@ -634,6 +681,12 @@ void VisualServerScene::instance_set_visible(RID p_instance, bool p_visible) {
 		case VS::INSTANCE_REFLECTION_PROBE: {
 			if (instance->octree_id && instance->scenario) {
 				instance->scenario->octree.set_pairable(instance->octree_id, p_visible, 1 << VS::INSTANCE_REFLECTION_PROBE, p_visible ? VS::INSTANCE_GEOMETRY_MASK : 0);
+			}
+
+		} break;
+		case VS::INSTANCE_ATMOSPHERE: {
+			if (instance->octree_id && instance->scenario) {
+				instance->scenario->octree.set_pairable(instance->octree_id, p_visible, 1 << VS::INSTANCE_ATMOSPHERE, p_visible ? VS::INSTANCE_GEOMETRY_MASK : 0);
 			}
 
 		} break;
@@ -863,6 +916,13 @@ void VisualServerScene::_update_instance(Instance *p_instance) {
 		light->shadow_dirty = true;
 	}
 
+	if (p_instance->base_type == VS::INSTANCE_ATMOSPHERE) {
+
+		InstanceAtmosphereData *atmosphere = static_cast<InstanceAtmosphereData *>(p_instance->base_data);
+
+		VSG::scene_render->atmosphere_instance_set_transform(atmosphere->instance, p_instance->transform);
+	}
+
 	if (p_instance->base_type == VS::INSTANCE_REFLECTION_PROBE) {
 
 		InstanceReflectionProbeData *reflection_probe = static_cast<InstanceReflectionProbeData *>(p_instance->base_data);
@@ -921,7 +981,7 @@ void VisualServerScene::_update_instance(Instance *p_instance) {
 		uint32_t pairable_mask = 0;
 		bool pairable = false;
 
-		if (p_instance->base_type == VS::INSTANCE_LIGHT || p_instance->base_type == VS::INSTANCE_REFLECTION_PROBE || p_instance->base_type == VS::INSTANCE_LIGHTMAP_CAPTURE) {
+		if (p_instance->base_type == VS::INSTANCE_LIGHT || p_instance->base_type == VS::INSTANCE_REFLECTION_PROBE || p_instance->base_type == VS::INSTANCE_LIGHTMAP_CAPTURE || p_instance->base_type == VS::INSTANCE_ATMOSPHERE) {
 
 			pairable_mask = p_instance->visible ? VS::INSTANCE_GEOMETRY_MASK : 0;
 			pairable = true;
@@ -999,6 +1059,11 @@ void VisualServerScene::_update_instance_aabb(Instance *p_instance) {
 		case VisualServer::INSTANCE_REFLECTION_PROBE: {
 
 			new_aabb = VSG::storage->reflection_probe_get_aabb(p_instance->base);
+
+		} break;
+		case VisualServer::INSTANCE_ATMOSPHERE: {
+
+			new_aabb = VSG::storage->atmosphere_get_aabb(p_instance->base);
 
 		} break;
 		case VisualServer::INSTANCE_GI_PROBE: {
@@ -1789,6 +1854,7 @@ void VisualServerScene::_prepare_scene(const Transform p_cam_transform, const Ca
 	light_cull_count = 0;
 
 	reflection_probe_cull_count = 0;
+	atmosphere_cull_count = 0;
 
 	//light_samplers_culled=0;
 
@@ -1829,6 +1895,20 @@ void VisualServerScene::_prepare_scene(const Transform p_cam_transform, const Ca
 					light_cull_count++;
 				}
 			}
+		} else if (ins->base_type == VS::INSTANCE_ATMOSPHERE && ins->visible) {
+
+			if (ins->visible && atmosphere_cull_count < MAX_ATMOSPHERES_CULLED) {
+
+				InstanceAtmosphereData *atmosphere = static_cast<InstanceAtmosphereData *>(ins->base_data);
+
+				if (!atmosphere->geometries.empty()) {
+					//do not add this atmosphere if no geometry is affected by it..
+					//printf("Atmosphere cull %d: %d\n", atmosphere_cull_count, atmosphere->instance.get_id());
+					atmosphere_instance_cull_result[atmosphere_cull_count] = atmosphere->instance;
+					atmosphere_cull_count++;
+				}
+			}
+
 		} else if (ins->base_type == VS::INSTANCE_REFLECTION_PROBE && ins->visible) {
 
 			if (ins->visible && reflection_probe_cull_count < MAX_REFLECTION_PROBES_CULLED) {
@@ -1922,7 +2002,20 @@ void VisualServerScene::_prepare_scene(const Transform p_cam_transform, const Ca
 
 				geom->gi_probes_dirty = false;
 			}
+			{
+				int l = 0;
+				ins->atmosphere_instances.resize(geom->atmospheres.size());
 
+				//printf("Atmospheres for geometry %d: ", ins->get_id());
+				for (List<Instance *>::Element *E = geom->atmospheres.front(); E; E = E->next()) {
+
+					InstanceAtmosphereData *atmosphere = static_cast<InstanceAtmosphereData *>(E->get()->base_data);
+
+					ins->atmosphere_instances[l++] = atmosphere->instance;
+					//printf("%d ", atmosphere->instance.get_id());
+				}
+				//printf("\n");
+			}
 			ins->depth = near_plane.distance_to(ins->transform.origin);
 			ins->depth_layer = CLAMP(int(ins->depth * 16 / z_far), 0, 15);
 		}
@@ -2097,7 +2190,7 @@ void VisualServerScene::_render_scene(const Transform p_cam_transform, const Cam
 
 	/* PROCESS GEOMETRY AND DRAW SCENE */
 
-	VSG::scene_render->render_scene(p_cam_transform, p_cam_projection, p_cam_orthogonal, (RasterizerScene::InstanceBase **)instance_cull_result, instance_cull_count, light_instance_cull_result, light_cull_count + directional_light_count, reflection_probe_instance_cull_result, reflection_probe_cull_count, environment, p_shadow_atlas, scenario->reflection_atlas, p_reflection_probe, p_reflection_probe_pass);
+	VSG::scene_render->render_scene(p_cam_transform, p_cam_projection, p_cam_orthogonal, (RasterizerScene::InstanceBase **)instance_cull_result, instance_cull_count, light_instance_cull_result, light_cull_count + directional_light_count, reflection_probe_instance_cull_result, reflection_probe_cull_count, atmosphere_instance_cull_result, atmosphere_cull_count, environment, p_shadow_atlas, scenario->reflection_atlas, p_reflection_probe, p_reflection_probe_pass);
 }
 
 void VisualServerScene::render_empty_scene(RID p_scenario, RID p_shadow_atlas) {
@@ -2109,7 +2202,7 @@ void VisualServerScene::render_empty_scene(RID p_scenario, RID p_shadow_atlas) {
 		environment = scenario->environment;
 	else
 		environment = scenario->fallback_environment;
-	VSG::scene_render->render_scene(Transform(), CameraMatrix(), true, NULL, 0, NULL, 0, NULL, 0, environment, p_shadow_atlas, scenario->reflection_atlas, RID(), 0);
+	VSG::scene_render->render_scene(Transform(), CameraMatrix(), true, NULL, 0, NULL, 0, NULL, 0, NULL, 0, environment, p_shadow_atlas, scenario->reflection_atlas, RID(), 0);
 }
 
 bool VisualServerScene::_render_reflection_probe_step(Instance *p_instance, int p_step) {

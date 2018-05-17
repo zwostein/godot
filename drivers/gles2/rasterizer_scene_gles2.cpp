@@ -75,6 +75,15 @@ void RasterizerSceneGLES2::reflection_atlas_set_subdivision(RID p_ref_atlas, int
 
 ////////////////////////////////////////////////////
 
+RID RasterizerSceneGLES2::atmosphere_instance_create(RID p_probe) {
+	return RID();
+}
+
+void RasterizerSceneGLES2::atmosphere_instance_set_transform(RID p_instance, const Transform &p_transform) {
+}
+
+////////////////////////////////////////////////////
+
 RID RasterizerSceneGLES2::reflection_probe_instance_create(RID p_probe) {
 	return RID();
 }
@@ -206,7 +215,7 @@ void RasterizerSceneGLES2::gi_probe_instance_set_bounds(RID p_probe, const Vecto
 ////////////////////////////
 ////////////////////////////
 
-void RasterizerSceneGLES2::render_scene(const Transform &p_cam_transform, const CameraMatrix &p_cam_projection, bool p_cam_ortogonal, InstanceBase **p_cull_result, int p_cull_count, RID *p_light_cull_result, int p_light_cull_count, RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, RID p_environment, RID p_shadow_atlas, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass) {
+void RasterizerSceneGLES2::render_scene(const Transform &p_cam_transform, const CameraMatrix &p_cam_projection, bool p_cam_orthogonal, InstanceBase **p_cull_result, int p_cull_count, RID *p_light_cull_result, int p_light_cull_count, RID *p_reflection_probe_cull_result, int p_reflection_probe_cull_count, RID *p_atmosphere_cull_result, int p_atmosphere_cull_count, RID p_environment, RID p_shadow_atlas, RID p_reflection_atlas, RID p_reflection_probe, int p_reflection_probe_pass) {
 }
 
 void RasterizerSceneGLES2::render_shadow(RID p_light, RID p_shadow_atlas, int p_pass, InstanceBase **p_cull_result, int p_cull_count) {
