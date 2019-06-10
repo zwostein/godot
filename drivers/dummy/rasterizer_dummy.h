@@ -32,6 +32,7 @@
 #define RASTERIZER_DUMMY_H
 
 #include "core/math/camera_matrix.h"
+#include "core/rid_owner.h"
 #include "core/self_list.h"
 #include "scene/resources/mesh.h"
 #include "servers/visual/rasterizer.h"
@@ -120,7 +121,7 @@ public:
 class RasterizerStorageDummy : public RasterizerStorage {
 public:
 	/* TEXTURE API */
-	struct DummyTexture : public RID_Data {
+	struct DummyTexture {
 		int width;
 		int height;
 		uint32_t flags;
@@ -141,14 +142,14 @@ public:
 		Vector<AABB> bone_aabbs;
 	};
 
-	struct DummyMesh : public RID_Data {
+	struct DummyMesh {
 		Vector<DummySurface> surfaces;
 		int blend_shape_count;
 		VS::BlendShapeMode blend_shape_mode;
 	};
 
-	mutable RID_Owner<DummyTexture> texture_owner;
-	mutable RID_Owner<DummyMesh> mesh_owner;
+	mutable RID_PtrOwner<DummyTexture> texture_owner;
+	mutable RID_PtrOwner<DummyMesh> mesh_owner;
 
 	RID texture_create() {
 
@@ -177,7 +178,7 @@ public:
 	}
 
 	void texture_set_data_partial(RID p_texture, const Ref<Image> &p_image, int src_x, int src_y, int src_w, int src_h, int dst_x, int dst_y, int p_dst_mip, int p_level) {
-		DummyTexture *t = texture_owner.get(p_texture);
+		DummyTexture *t = texture_owner.getornull(p_texture);
 
 		ERR_FAIL_COND(!t);
 		ERR_FAIL_COND(t->format != p_image->get_format());
@@ -586,7 +587,7 @@ public:
 	void gi_probe_dynamic_data_update(RID p_gi_probe_data, int p_depth_slice, int p_slice_count, int p_mipmap, const void *p_data) {}
 
 	/* LIGHTMAP CAPTURE */
-	struct Instantiable : public RID_Data {
+	struct Instantiable {
 
 		SelfList<RasterizerScene::InstanceBase>::List instance_list;
 
@@ -628,7 +629,7 @@ public:
 		}
 	};
 
-	mutable RID_Owner<LightmapCapture> lightmap_capture_data_owner;
+	mutable RID_PtrOwner<LightmapCapture> lightmap_capture_data_owner;
 	void lightmap_capture_set_bounds(RID p_capture, const AABB &p_bounds) {}
 	AABB lightmap_capture_get_bounds(RID p_capture) const { return AABB(); }
 	void lightmap_capture_set_octree(RID p_capture, const PoolVector<uint8_t> &p_octree) {}
@@ -722,7 +723,7 @@ public:
 
 		if (texture_owner.owns(p_rid)) {
 			// delete the texture
-			DummyTexture *texture = texture_owner.get(p_rid);
+			DummyTexture *texture = texture_owner.getornull(p_rid);
 			texture_owner.free(p_rid);
 			memdelete(texture);
 		}
