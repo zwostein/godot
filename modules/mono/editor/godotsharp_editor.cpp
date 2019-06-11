@@ -448,7 +448,7 @@ GodotSharpEditor::GodotSharpEditor(EditorNode *p_editor) {
 
 		TextureRect *about_icon = memnew(TextureRect);
 		about_hbc->add_child(about_icon);
-		Ref<Texture> about_icon_tex = about_icon->get_icon("NodeWarning", "EditorIcons");
+		Ref<Texture2D> about_icon_tex = about_icon->get_icon("NodeWarning", "EditorIcons");
 		about_icon->set_texture(about_icon_tex);
 
 		Label *about_label = memnew(Label);

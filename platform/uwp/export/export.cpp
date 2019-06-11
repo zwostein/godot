@@ -1025,7 +1025,7 @@ public:
 		return list;
 	}
 
-	virtual Ref<Texture> get_logo() const {
+	virtual Ref<Texture2D> get_logo() const {
 		return logo;
 	}
 

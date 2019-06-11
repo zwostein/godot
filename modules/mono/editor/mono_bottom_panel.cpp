@@ -355,8 +355,8 @@ void MonoBuildTab::_update_issues_list() {
 
 	issues_list->clear();
 
-	Ref<Texture> warning_icon = get_icon("Warning", "EditorIcons");
-	Ref<Texture> error_icon = get_icon("Error", "EditorIcons");
+	Ref<Texture2D> warning_icon = get_icon("Warning", "EditorIcons");
+	Ref<Texture2D> error_icon = get_icon("Error", "EditorIcons");
 
 	for (int i = 0; i < issues.size(); i++) {
 
@@ -404,7 +404,7 @@ void MonoBuildTab::_update_issues_list() {
 	}
 }
 
-Ref<Texture> MonoBuildTab::get_icon_texture() const {
+Ref<Texture2D> MonoBuildTab::get_icon_texture() const {
 
 	if (build_exited) {
 		if (build_result == RESULT_ERROR) {

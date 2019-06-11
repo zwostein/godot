@@ -1283,7 +1283,7 @@ static void _add_text_to_rt(const String &p_bbcode, RichTextLabel *p_rt) {
 				end = bbcode.length();
 			String image = bbcode.substr(brk_end + 1, end - brk_end - 1);
 
-			Ref<Texture> texture = ResourceLoader::load(base_path + "/" + image, "Texture");
+			Ref<Texture2D> texture = ResourceLoader::load(base_path + "/" + image, "Texture2D");
 			if (texture.is_valid())
 				p_rt->add_image(texture);
 

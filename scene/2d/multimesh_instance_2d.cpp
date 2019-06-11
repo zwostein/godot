@@ -68,7 +68,7 @@ Ref<MultiMesh> MultiMeshInstance2D::get_multimesh() const {
 	return multimesh;
 }
 
-void MultiMeshInstance2D::set_texture(const Ref<Texture> &p_texture) {
+void MultiMeshInstance2D::set_texture(const Ref<Texture2D> &p_texture) {
 
 	if (p_texture == texture)
 		return;
@@ -78,18 +78,18 @@ void MultiMeshInstance2D::set_texture(const Ref<Texture> &p_texture) {
 	_change_notify("texture");
 }
 
-Ref<Texture> MultiMeshInstance2D::get_texture() const {
+Ref<Texture2D> MultiMeshInstance2D::get_texture() const {
 
 	return texture;
 }
 
-void MultiMeshInstance2D::set_normal_map(const Ref<Texture> &p_texture) {
+void MultiMeshInstance2D::set_normal_map(const Ref<Texture2D> &p_texture) {
 
 	normal_map = p_texture;
 	update();
 }
 
-Ref<Texture> MultiMeshInstance2D::get_normal_map() const {
+Ref<Texture2D> MultiMeshInstance2D::get_normal_map() const {
 
 	return normal_map;
 }

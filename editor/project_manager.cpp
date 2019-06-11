@@ -103,9 +103,9 @@ private:
 	void set_message(const String &p_msg, MessageType p_type = MESSAGE_SUCCESS, InputType input_type = PROJECT_PATH) {
 
 		msg->set_text(p_msg);
-		Ref<Texture> current_path_icon = status_rect->get_texture();
-		Ref<Texture> current_install_icon = install_status_rect->get_texture();
-		Ref<Texture> new_icon;
+		Ref<Texture2D> current_path_icon = status_rect->get_texture();
+		Ref<Texture2D> current_install_icon = install_status_rect->get_texture();
+		Ref<Texture2D> new_icon;
 
 		switch (p_type) {
 
@@ -1301,7 +1301,7 @@ void ProjectManager::_load_recent_projects() {
 		projects.push_front(E->get());
 	}
 
-	Ref<Texture> favorite_icon = get_icon("Favorites", "EditorIcons");
+	Ref<Texture2D> favorite_icon = get_icon("Favorites", "EditorIcons");
 
 	for (List<ProjectItem>::Element *E = projects.front(); E; E = E->next()) {
 
@@ -1321,7 +1321,7 @@ void ProjectManager::_load_recent_projects() {
 		if (filter_option == ProjectListFilter::FILTER_NAME && search_term != "" && project_name.findn(search_term) == -1)
 			continue;
 
-		Ref<Texture> icon;
+		Ref<Texture2D> icon;
 		String main_scene;
 
 		if (cf_err == OK) {
@@ -1338,7 +1338,7 @@ void ProjectManager::_load_recent_projects() {
 				Error err = img->load(appicon.replace_first("res://", path + "/"));
 				if (err == OK) {
 
-					Ref<Texture> default_icon = get_icon("DefaultProjectIcon", "EditorIcons");
+					Ref<Texture2D> default_icon = get_icon("DefaultProjectIcon", "EditorIcons");
 					img->resize(default_icon->get_width(), default_icon->get_height());
 					Ref<ImageTexture> it = memnew(ImageTexture);
 					it->create_from_image(img);

@@ -133,7 +133,7 @@ protected:
 	static void _bind_methods();
 
 public:
-	Ref<Texture> get_icon_texture() const;
+	Ref<Texture2D> get_icon_texture() const;
 
 	MonoBuildInfo get_build_info();
 
