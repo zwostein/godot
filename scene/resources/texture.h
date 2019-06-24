@@ -513,7 +513,8 @@ class ProxyTexture : public Texture2D {
 	GDCLASS(ProxyTexture, Texture2D)
 
 private:
-	RID proxy;
+	mutable RID proxy_ph;
+	mutable RID proxy;
 	Ref<Texture2D> base;
 
 protected:
@@ -544,6 +545,7 @@ private:
 		MAX_FRAMES = 256
 	};
 
+	RID proxy_ph;
 	RID proxy;
 
 	struct Frame {
