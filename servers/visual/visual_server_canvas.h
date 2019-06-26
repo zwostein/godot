@@ -53,7 +53,6 @@ public:
 		Vector2 ysort_pos;
 		VS::CanvasItemTextureFilter texture_filter;
 		VS::CanvasItemTextureRepeat texture_repeat;
-		int z_final;
 
 		Vector<Item *> child_items;
 
